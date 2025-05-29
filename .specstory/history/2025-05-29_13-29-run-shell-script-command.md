@@ -362,3 +362,577 @@ _**Assistant**_
 
 ---
 
+That's good thinking about how to handle multiple commands! For this particular stage, the requirements are a bit simpler than what your ideas cover, but your intuitions about queues and goroutines are valuable for more complex servers.
+
+Let's look at your ideas in the context of this stage:
+
+1.  **Internal queue with a list for requests, responding serially:**
+    *   This is a robust pattern, but for this stage where you're just hardcoding a PONG response to any data received on a *single connection*, an explicit internal queue might be more than you need. The operating system and Go's networking stack already provide buffering for the incoming data on the connection.
+
+2.  **Goroutines to concurrently write back multiple PONGs:**
+    *   Goroutines are fantastic for concurrency, and they will be essential when you start handling *multiple client connections simultaneously* in later stages. However, for multiple commands coming from the *same client on the same connection*, Redis typically processes them sequentially: read command 1, write response 1, then read command 2, write response 2, and so on. Using goroutines for each PONG on the same connection could risk sending responses out of order if not managed carefully, and it's not the model for this stage.
+
+**The Recommended Approach for This Stage:**
+
+The problem states: *"A Redis server starts to listen for the next command as soon as it's done responding to the previous one... You'll need to run a loop that reads input from a connection and sends a response back."*
+
+This points to a simpler solution for now:
+1.  Accept a connection (which you're already doing).
+2.  Enter a loop that continues as long as the connection is active.
+3.  Inside the loop:
+    a.  Try to read some data from the connection. For this stage, you don't even need to check *what* the data is (e.g., "PING"). The act of receiving any data is the trigger.
+    b.  If data is successfully read, write `+PONG\r\n` back to the *same* connection.
+    c.  If reading from the connection fails (e.g., the client closes the connection, resulting in an `io.EOF` error), break out of the loop.
+
+This approach handles multiple commands on a single connection sequentially, which matches the behavior described.
+
+I'll modify `app/main.go` to implement this loop. I'll also add `defer conn.Close()` and `defer l.Close()` as good practice to ensure resources are cleaned up.
+
+Here's the plan:
+1.  Add `defer l.Close()` after `net.Listen`.
+2.  Add `defer conn.Close()` after `l.Accept`.
+3.  Create a small buffer for reading.
+4.  Implement a `for` loop that:
+    *   Reads from `conn` into the buffer.
+    *   If `read` encounters an error (like `io.EOF` indicating the client closed the connection, or any other error), print a message and break the loop.
+    *   If `read` is successful, write `+PONG\r\n` to `conn`.
+    *   If `write` encounters an error, print a message and break the loop.
+
+This will ensure your server responds to each "PING" (or any data) with a "PONG" on the same connection until the client disconnects.
+I'll add the `io` package for `io.EOF`.
+
+---
+
+```diff
+  import (
+  	"fmt"
++ 	"io"
+  	"net"
+  	"os"
+```
+
+```diff
+  		os.Exit(1)
+  	}
++ 	defer l.Close()
++ 
+  	conn, err := l.Accept()
+  	if err != nil {
+  		fmt.Println("Error accepting connection: ", err.Error())
+  		os.Exit(1)
+  	}
+- 	conn.Write([]byte("+PONG\r\n"))
++ 	defer conn.Close()
++ 
++ 	// Buffer to read client input, 1KB should be plenty for PINGs
++ 	buffer := make([]byte, 1024)
++ 
++ 	for {
++ 		// Try to read data from the connection.
++ 		// For this stage, we don't need to inspect the content of the buffer.
++ 		// The act of receiving data is enough to trigger a PONG.
++ 		_, err := conn.Read(buffer)
++ 		if err != nil {
++ 			if err == io.EOF {
++ 				// Connection closed by client, normal termination for this loop
++ 				fmt.Println("Client closed the connection.")
++ 			} else {
++ 				// Some other read error occurred
++ 				fmt.Println("Error reading from connection:", err.Error())
++ 			}
++ 			break // Exit the loop
++ 		}
++ 
++ 		// Send back PONG
++ 		_, err = conn.Write([]byte("+PONG\r\n"))
++ 		if err != nil {
++ 			fmt.Println("Error writing PONG to connection:", err.Error())
++ 			break // Exit the loop if we can't write
++ 		}
++ 	}
+  }
+  
+```
+
+---
+
+I've updated `app/main.go` to include a loop that continuously reads from the client connection and responds with `+PONG\r\n`. It also includes `defer` statements to ensure the listener and connection are closed properly. This should satisfy the requirements for this stage.
+
+---
+
+_**User**_
+
+channels in go
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Channels are a powerful and fundamental feature in Go, designed for communication and synchronization between goroutines (Go's lightweight, concurrently executing functions).
+
+Think of a channel as a typed conduit through which you can send and receive values with the channel operator `<-`.
+
+**Key Concepts:**
+
+1.  **Typed:** Channels are typed. This means a channel can only transport values of a specific type (e.g., `chan int` for integers, `chan string` for strings, `chan MyStruct` for a custom struct).
+
+2.  **Communication:** They provide a way for one goroutine to send data to another goroutine.
+
+3.  **Synchronization:** By default, sends and receives on a channel are *blocking*. This is a crucial aspect:
+    *   **Send:** If a goroutine tries to send a value on a channel (`myChannel <- value`), it will block until another goroutine is ready to receive from that same channel (`receivedValue := <-myChannel`).
+    *   **Receive:** If a goroutine tries to receive a value from a channel (`<-myChannel`), it will block until another goroutine sends a value on that channel.
+    This blocking behavior is what makes channels excellent for synchronizing the execution of goroutines. One goroutine can wait for another to complete a task or send a piece of data before proceeding.
+
+4.  **Creating Channels:** You create a channel using the `make()` function:
+    ```go
+    ch := make(chan int)    // Creates an unbuffered channel of integers
+    strCh := make(chan string) // Creates an unbuffered channel of strings
+    ```
+
+5.  **Sending and Receiving:**
+    ```go
+    ch := make(chan int)
+
+    go func() {
+        ch <- 10 // Send the value 10 into the channel
+    }()
+
+    value := <-ch // Receive a value from the channel (blocks until the goroutine sends)
+    fmt.Println(value) // Prints 10
+    ```
+
+6.  **Buffered vs. Unbuffered Channels:**
+    *   **Unbuffered Channels (Default):**
+        *   Created like `ch := make(chan int)`.
+        *   A sender will block until a receiver is ready, and a receiver will block until a sender is ready. This forces a rendezvous or synchronization point.
+    *   **Buffered Channels:**
+        *   Created with a capacity: `bufCh := make(chan int, 3)` (this channel can hold 3 integers).
+        *   **Sends** to a buffered channel only block if the buffer is full.
+        *   **Receives** from a buffered channel only block if the buffer is empty.
+        *   Buffered channels can decouple senders and receivers to some extent, allowing them to operate with less direct synchronization, but they don't eliminate the need for it entirely. They are useful for smoothing out bursts of work or managing a limited number of resources.
+
+    ```go
+    bufCh := make(chan int, 2) // Buffer size of 2
+
+    bufCh <- 1 // Send 1 (doesn't block, buffer was empty)
+    bufCh <- 2 // Send 2 (doesn't block, buffer had space)
+    // bufCh <- 3 // This would block if no one is receiving, as buffer is full
+
+    fmt.Println(<-bufCh) // Prints 1
+    fmt.Println(<-bufCh) // Prints 2
+    // fmt.Println(<-bufCh) // This would block if no one sends more, as buffer is empty
+    ```
+
+7.  **Closing Channels:**
+    *   Channels can be closed by the sender using the `close()` function: `close(ch)`.
+    *   Closing a channel indicates that no more values will be sent on it.
+    *   Receivers can test if a channel has been closed using a special two-value form of the receive operation:
+        ```go
+        value, ok := <-ch
+        if !ok {
+            // Channel is closed and empty
+            fmt.Println("Channel closed!")
+        } else {
+            // Received a value
+            fmt.Println("Received:", value)
+        }
+        ```
+    *   Attempting to send on a closed channel will cause a panic.
+    *   Receiving from a closed channel will always return immediately. If the channel had buffered values, they will be returned first, then subsequent receives will return the zero value for the channel's type and `ok` will be `false`.
+    *   It's a common pattern to use `for range` to receive values from a channel until it's closed:
+        ```go
+        go func() {
+            for i := 0; i < 3; i++ {
+                ch <- i
+                time.Sleep(100 * time.Millisecond)
+            }
+            close(ch)
+        }()
+
+        for value := range ch { // Loops until ch is closed and empty
+            fmt.Println("Received via range:", value)
+        }
+        ```
+
+8.  **`select` Statement:**
+    *   The `select` statement lets a goroutine wait on multiple channel operations simultaneously.
+    *   It's like a `switch` statement but for channels.
+    *   It blocks until one of its cases can run, then it executes that case. If multiple cases are ready, it chooses one at random.
+    *   A `default` case can be added to make the `select` non-blocking.
+
+    ```go
+    ch1 := make(chan string)
+    ch2 := make(chan string)
+
+    go func() { time.Sleep(1 * time.Second); ch1 <- "one" }()
+    go func() { time.Sleep(2 * time.Second); ch2 <- "two" }()
+
+    for i := 0; i < 2; i++ {
+        select {
+        case msg1 := <-ch1:
+            fmt.Println("received", msg1)
+        case msg2 := <-ch2:
+            fmt.Println("received", msg2)
+        }
+    }
+    // Output (order might vary if sleeps were identical, but here ch1 is faster):
+    // received one
+    // received two
+    ```
+
+**Why are channels important in Go?**
+
+"Share memory by communicating, don't communicate by sharing memory." This is a core Go philosophy. Channels are the primary way to achieve this. Instead of using mutexes and condition variables to protect shared data structures (which can be error-prone), you pass data (or ownership of data) from one goroutine to another via channels. This often leads to cleaner, less complex concurrent code.
+
+In the context of your Redis server:
+*   When you start handling multiple client connections, each connection might be handled by its own goroutine.
+*   If these goroutines need to coordinate (e.g., access a shared data store for keys and values), channels could be used to send commands or results between the connection-handling goroutines and a central data-managing goroutine. This can help avoid race conditions on the shared data.
+
+For your current stage, you don't strictly *need* channels yet because you're handling one connection and its commands sequentially. But understanding them is crucial for scaling up your server.
+
+---
+
+_**User**_
+
+for the select in eventReactor how do I listen for the PONG command form the buffeR?
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+You've got the right idea to use a channel to decouple reading from the network (`listen` function) and processing commands (`eventReactor` function)!
+
+The linter error `select case must be send or receive (possibly with assignment)` in your `eventReactor` function is because a `select` statement's `case` expressions must be channel operations (like `<-myChannel` or `myChannel <- data`). You can't directly use `case "PING":` to check the content of a variable within a `select`.
+
+Here's how you can correctly check for the "PING" command after receiving data from the channel:
+
+1.  **Modify `listen` to send only the data read:**
+    Your `listen` function reads into a 1024-byte buffer but then sends the *entire* buffer on the channel. It should only send the slice of the buffer that contains the data actually read from the connection.
+
+2.  **Modify `eventReactor` to process the received data:**
+    *   Receive the `[]byte` slice from the channel.
+    *   Convert this byte slice to a string.
+    *   Trim any leading/trailing whitespace (like `\r\n` or `\n`) from the string.
+    *   Use a regular `if` statement (or a `switch` if you plan to handle many commands) to check if the string is "PING".
+
+I'll make these changes. I'll also add an import for the `strings` package, which is needed for `strings.TrimSpace`.
+
+Here are the planned modifications:
+
+**In `app/main.go`:**
+
+1.  **Update `listen` function:**
+    *   When `conn.Read(buffer)` is called, it returns the number of bytes read (`n`).
+    *   Send `buffer[:n]` on the channel instead of the whole `buffer`.
+
+2.  **Update `eventReactor` function:**
+    *   The outer `select` (or a simple blocking receive `buffer := <-channel`) is fine for getting data from the channel.
+    *   Remove the inner `select` block.
+    *   After receiving `buffer` from the channel, convert `string(buffer)` and use `strings.TrimSpace()` to clean it up.
+    *   Use an `if` statement: `if trimmedCommand == "PING" { ping_command(conn) } else { /* handle other or still PONG */ }`. For this stage, you'll likely still call `ping_command(conn)` in the `else` block too, as any input should result in a PONG.
+
+Let's apply these changes.
+I will first update the `listen` function.
+
+
+---
+
+```diff
+  	"net"
+  	"os"
++ 	"strings"
+  )
+  
+```
+
+```diff
+  	for {
+  		// Try to read data from the connection.
+- 		// For this stage, we don't need to inspect the content of the buffer.
+- 		// The act of receiving data is enough to trigger a PONG.
+- 		_, err := conn.Read(buffer)
++ 		n, err := conn.Read(buffer)
+  		if err != nil {
+  			if err == io.EOF {
+  				// Connection closed by client, normal termination for this loop
+  				fmt.Println("Client closed the connection.")
++ 				close(channel) // Close the channel to signal eventReactor to stop
+  			} else {
+  				// Some other read error occurred
+  				fmt.Println("Error reading from connection:", err.Error())
++ 				close(channel) // Also close on other errors
+  			}
+  			break // Exit the loop
+  		}
+  
+- 		channel <- buffer
++ 		// Send only the part of the buffer that contains data
++ 		dataRead := make([]byte, n) // Create a new slice with the exact size
++ 		copy(dataRead, buffer[:n])  // Copy the data
++ 		channel <- dataRead
+  	}
+  }
+```
+
+---
+
+Okay, the `listen` function is updated to send the correct slice of data and to close the channel when the connection ends. This is important so the `eventReactor` goroutine can terminate gracefully.
+
+Now, I'll fix the `eventReactor` function to correctly process the commands from the channel and remove the linter error.
+
+---
+
+```diff
+  	"net"
+  	"os"
++ 	"strings"
+  )
+  
+```
+
+```diff
+  func eventReactor(channel chan []byte, conn net.Conn) {
+  	for {
+- 		select {
+- 		case buffer := <-channel:
+- 			fmt.Println("Received buffer:", string(buffer))
+- 			select {
+- 			case "PING":
++ 		// Wait for data from the listen goroutine
++ 		// The ok variable will be false if the channel is closed
++ 		buffer, ok := <-channel
++ 		if !ok {
++ 			fmt.Println("Channel closed, eventReactor exiting.")
++ 			break // Exit loop if channel is closed
++ 		}
++ 
++ 		// Convert buffer to string and trim whitespace
++ 		command := strings.TrimSpace(string(buffer))
++ 		fmt.Println("Received command:", command) // For debugging
++ 
++ 		// For this stage, we respond PONG to any command (including empty strings after trim)
++ 		// In later stages, you'll parse specific commands like PING.
++ 		if command == "PING" { // Specific check for PING
++ 			ping_command(conn)
++ 		} else {
++ 			// For now, still respond PONG to anything else, or handle appropriately
++ 			// As per instructions for this stage, any input should get a PONG.
++ 			// If the input after TrimSpace is empty (e.g. client sent only \r\n), 
++ 			// we might still want to PONG or decide how to handle it.
++ 			// For simplicity, let's PONG if anything (even empty string) was received and channel not closed.
+  			ping_command(conn) 
+- 			default:
+- 				fmt.Println("Channel is full")
+- 			}
+  		}
+  	}
+```
+
+---
+
+The `eventReactor` function has been updated. It now correctly:
+1.  Receives data from the `channel` using the `buffer, ok := <-channel` idiom to check if the channel has been closed.
+2.  Converts the received byte slice to a string and uses `strings.TrimSpace` to remove leading/trailing whitespace.
+3.  Uses a simple `if command == "PING"` to check the command. For this stage, it still sends a PONG for other commands as well, as per the stage requirements.
+
+The linter error should be resolved, and your program now uses a channel to pass data from the network reading goroutine to the command processing goroutine. The main loop in `main` also needs to wait for the goroutines to finish, or it might exit prematurely. For now, the program will run until the client closes the connection, at which point `listen` will close the channel, and `eventReactor` will exit its loop, and then `main` will finish.
+
+This structure is a good step towards a more robust server design!
+
+---
+
+_**User**_
+
+It seems that the comman dstopped after the first ping and no logs where wirtten? 
+
+❯ ./your_program.sh                                                                                                       │Could not connect to Redis at 127.0.0.1:6379: Connection refused
+Logs from your program will appear here!
+
+❯ echo -e "PING\nPING\nPING\n" | redis-cli
+Error: Connection reset by peer
+Could not connect to Redis at 127.0.0.1:6379: Connection refused
+Could not connect to Redis at 127.0.0.1:6379: Connection refused
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+You're right to point that out! The behavior you're seeing ("Connection reset by peer" after the first PING attempt and then "Connection refused") and the lack of further logs strongly suggest that the main Go program is exiting prematurely.
+
+Here's what's happening in your `main` function:
+1.  It sets up the listener and accepts a single connection.
+2.  It creates a channel.
+3.  It launches the `listen` goroutine.
+4.  It launches the `eventReactor` goroutine.
+5.  **Then, the `main` function immediately reaches its end and exits.**
+
+When the `main` function exits, the entire program terminates, and all other goroutines (like `listen` and `eventReactor`) are abruptly stopped. This is why `redis-cli` sees the connection reset and then can't reconnect – the server is no longer running.
+
+To fix this, `main` needs to wait for the relevant goroutines to complete their work for the accepted connection. Since `eventReactor` is the one processing commands and will exit when its input `channel` is closed (which `listen` does upon connection termination), we can make `main` wait for `eventReactor` to finish.
+
+A common way to do this is using a `sync.WaitGroup`:
+1.  Initialize a `sync.WaitGroup`.
+2.  Before launching the `eventReactor` goroutine, call `wg.Add(1)`.
+3.  In the `eventReactor` function, use `defer wg.Done()` to ensure `Done()` is called when `eventReactor` exits.
+4.  In `main`, after launching the goroutines, call `wg.Wait()`. This will block `main` until `wg.Done()` has been called.
+
+I'll apply this change to `app/main.go`. This will involve importing the `sync` package.
+
+---
+
+```diff
+  	"os"
+  	"strings"
++ 	"sync"
+  )
+  
+```
+
+```diff
+  }
+  
+- func eventReactor(channel chan []byte, conn net.Conn) {
++ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
++ 	defer wg.Done()
+  	for {
+  		// Wait for data from the listen goroutine
+```
+
+```diff
+  
+  	channel := make(chan []byte)
++ 	var wg sync.WaitGroup
+  
++ 	wg.Add(1)
+  	go listen(conn, channel)
+- 	go eventReactor(channel, conn)
++ 	go eventReactor(channel, conn, &wg)
++ 
++ 	wg.Wait()
+  
++ 	fmt.Println("Server shutting down gracefully.")
+  }
+  
+```
+
+---
+
+I've updated `app/main.go` to use `sync.WaitGroup`.
+
+Here's a summary of the changes:
+1.  Imported the `sync` package.
+2.  In `main`:
+    *   A `sync.WaitGroup` named `wg` is created.
+    *   `wg.Add(1)` is called before starting the `eventReactor` goroutine.
+    *   `eventReactor` is now called with `&wg` as an argument.
+    *   `wg.Wait()` is called after launching the goroutines. This will make `main` block until the `eventReactor` signals it's done.
+3.  In `eventReactor`:
+    *   It now accepts `*sync.WaitGroup` as a parameter.
+    *   `defer wg.Done()` is added at the beginning. This ensures that `wg.Done()` is called when `eventReactor` returns (either because the channel closed or due to some other condition causing it to break its loop).
+
+Now, the `main` function will wait until the `eventReactor` has finished processing (which happens when the client connection is closed and the `listen` goroutine closes the channel). This should allow your server to handle all PINGs from `redis-cli` on a single connection before shutting down gracefully.
+
+Try running your `./your_program.sh` and the `redis-cli` command again. You should see logs for each PING and the "Connection reset by peer" error should be gone, replaced by `redis-cli` exiting normally after all its commands are processed.
+
+---
+
+_**User**_
+
+what does sync.WAitGroup do?
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+A `sync.WaitGroup` is a synchronization primitive in Go that allows a goroutine to wait for a collection of other goroutines to finish executing. It's a way to block until a set of concurrent operations has been completed.
+
+Think of it like a counter for active goroutines (or tasks) you want to track:
+
+1.  **Initialize:** You create a `WaitGroup` (e.g., `var wg sync.WaitGroup`). The counter starts at zero.
+
+2.  **`Add(delta int)`:**
+    *   Before you launch a goroutine (or start a task) that you want the `WaitGroup` to track, you increment its internal counter by calling `wg.Add(1)`.
+    *   `delta` can be positive to increase the counter or negative to decrease it (though decreasing directly with `Add` is less common than using `Done`).
+
+3.  **`Done()`:**
+    *   When a goroutine tracked by the `WaitGroup` finishes its work, it must call `wg.Done()`.
+    *   `wg.Done()` decrements the `WaitGroup`'s internal counter by one.
+    *   It's crucial to call `Done()` exactly once for every `Add(1)` call that was made for that goroutine. Usually, this is done using `defer wg.Done()` at the beginning of the goroutine's function to ensure it's called even if the goroutine panics or returns early.
+
+4.  **`Wait()`:**
+    *   A goroutine (often the `main` goroutine or a "coordinator" goroutine) can call `wg.Wait()`.
+    *   This call will *block* the calling goroutine until the `WaitGroup`'s internal counter becomes zero.
+    *   Once the counter is zero (meaning all goroutines that had `Add(1)` called for them have subsequently called `Done()`), `Wait()` unblocks, and the calling goroutine can proceed.
+
+**How it was used in your code (`app/main.go`):**
+
+*   `var wg sync.WaitGroup`: We created a `WaitGroup`.
+*   `wg.Add(1)`: Before starting the `eventReactor` goroutine, we told the `WaitGroup` that we are about to start one task it needs to wait for.
+*   `go eventReactor(channel, conn, &wg)`: We launched `eventReactor` and passed it a pointer to the `WaitGroup`.
+*   Inside `eventReactor`: `defer wg.Done()`: We ensured that when `eventReactor` finishes (because the client connection closed, the channel was closed, and its loop exited), it signals the `WaitGroup` by decrementing the counter.
+*   In `main`: `wg.Wait()`: The `main` goroutine paused here. It waited until `eventReactor` called `wg.Done()`. Once `wg.Done()` was called, the counter became zero, `wg.Wait()` unblocked, and `main` could then proceed to print "Server shutting down gracefully." and then exit.
+
+**Why is it useful?**
+
+*   **Graceful Shutdown:** As in your case, it allows the `main` program to wait for essential background tasks to complete before exiting, preventing them from being cut off prematurely.
+*   **Coordinating Concurrent Tasks:** If you have multiple goroutines performing parts of a larger task, a `WaitGroup` can be used to ensure all parts are finished before proceeding to the next stage. For example, downloading multiple files concurrently and then processing them once all downloads are complete.
+*   **Resource Management:** Ensuring that resources used by goroutines are properly released before the program or a specific part of it moves on.
+
+It's a simple yet very effective tool for managing the lifecycle of goroutines and ensuring that operations complete in the intended order.
+
+---
+
+_**User**_
+
+simply put waht does it do I'm still confused does it wait for 1 go rountine to finish?
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Yes, in your specific code, the `sync.WaitGroup` is effectively used to make the `main` goroutine wait for **one** other goroutine (`eventReactor`) to finish.
+
+Think of it like this:
+
+1.  **`wg.Add(1)`**: `main` says, "Hey, `WaitGroup`, I'm about to start 1 important task (the `eventReactor` goroutine). Please keep track of it." (Counter becomes 1)
+
+2.  **`go eventReactor(..., &wg)`**: The `eventReactor` goroutine starts.
+
+3.  **Inside `eventReactor`: `defer wg.Done()`**: `eventReactor` promises, "When I'm completely finished with my work, I'll tell the `WaitGroup`."
+
+4.  **In `main`: `wg.Wait()`**: `main` says, "Okay, `WaitGroup`, I'm going to pause right here. Wake me up only when all the tasks you're tracking are done."
+
+5.  **Later, `eventReactor` finishes**: It automatically calls `wg.Done()` (because of `defer`). This tells the `WaitGroup`, "That one task I was doing? It's done now." (Counter becomes 0)
+
+6.  **`wg.Wait()` in `main` unblocks**: Because the counter is now zero, `main` wakes up and continues.
+
+**So, simply put:**
+
+*   `Add(N)` tells the `WaitGroup`, "I'm expecting N tasks to complete."
+*   `Done()` (called by each task when it finishes) tells the `WaitGroup`, "One of those tasks is now complete."
+*   `Wait()` makes the current goroutine pause until enough `Done()` calls have happened to match all the `Add()` calls (i.e., the counter goes back to zero).
+
+While it *can* wait for many goroutines (if you call `Add` multiple times), in your current setup, you're using it to ensure `main` doesn't exit before `eventReactor` has handled the client connection.
+
+---
+
