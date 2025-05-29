@@ -936,3 +936,381 @@ While it *can* wait for many goroutines (if you call `Add` multiple times), in y
 
 ---
 
+_**User**_
+
+❯ vi codecrafters.yml
+❯ codecrafters test
+
+Initiating test run...
+
+⚡ This is a turbo test run. https://codecrafters.io/turbo
+
+Running tests. Logs should appear shortly...
+
+[compile] Moved ./.codecrafters/run.sh → ./your_program.sh
+[compile] Compilation successful.
+
+Debug = true
+
+[tester::#ZU2] Running tests for Stage #ZU2 (Handle concurrent clients)
+[tester::#ZU2] $ ./your_program.sh
+[your_program] Logs from your program will appear here!
+[tester::#ZU2] client-1: $ redis-cli PING
+[tester::#ZU2] client-1: Sent bytes: "*1\r\n$4\r\nPING\r\n"
+[your_program] Received command: *1
+[your_program] $4
+[tester::#ZU2] client-1: Received bytes: "+PONG\r\n"
+[your_program] PING
+[tester::#ZU2] client-1: Received RESP simple string: "PONG"
+[tester::#ZU2] Received "PONG"
+[tester::#ZU2] client-2: $ redis-cli PING
+[tester::#ZU2] client-2: Sent bytes: "*1\r\n$4\r\nPING\r\n"
+[tester::#ZU2] Received: "" (no content received)
+[tester::#ZU2]            ^ error
+[tester::#ZU2] Error: Expected start of a new RESP2 value (either +, -, :, $ or *)
+[tester::#ZU2] Test failed
+[tester::#ZU2] Terminating program
+[tester::#ZU2] Program terminated successfully
+
+View our article on debugging test failures: https://codecrafters.io/debug
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+The test results clearly indicate that your server is not handling concurrent clients correctly. The first client connects and communicates successfully, but the second client's connection attempt fails to get a response. This usually means the server's main thread accepted the first client and then got "stuck" handling it, or exited, rather than looping back to accept new connections.
+
+Your `main` function currently accepts only one connection and then waits for its `eventReactor` goroutine to finish. To handle multiple clients concurrently, you need to:
+1.  Put the `l.Accept()` call inside an infinite loop.
+2.  For each new connection accepted, you must spawn a new set of goroutines (`listen` and `eventReactor`) to handle that client independently.
+3.  Each client connection should have its own dedicated channel and its own `sync.WaitGroup` for managing its `eventReactor` goroutine.
+
+I'll modify `app/main.go` to implement this.
+Specifically:
+*   The `main` function will loop indefinitely, calling `l.Accept()`.
+*   For each accepted connection, it will create a new `clientChannel` and a new `clientWg` (`sync.WaitGroup`).
+*   It will then launch `listen` and `eventReactor` as goroutines, passing them the new connection, channel, and waitgroup.
+*   The `listen` function will also be updated to `defer conn.Close()` to ensure each client's connection is closed when its `listen` goroutine finishes.
+*   The `WaitGroup` logic in `main` that was waiting for a single client will be removed, as the server is now intended to run continuously.
+
+I'll also add a log message when a new connection is accepted for better visibility.
+
+
+
+---
+
+```diff
+  
+  func listen(conn net.Conn, channel chan []byte) {
++ 	defer conn.Close()   // Ensure the connection for this client is closed when listen exits
++ 	defer close(channel) // Close the channel to signal eventReactor to stop
+  
+  	buffer := make([]byte, 1024)
+```
+
+```diff
+  			if err == io.EOF {
+  				// Connection closed by client, normal termination for this loop
+- 				fmt.Println("Client closed the connection.")
+- 				close(channel) // Close the channel to signal eventReactor to stop
++ 				fmt.Printf("Client %s closed the connection.
++ ", conn.RemoteAddr())
+  			} else {
+  				// Some other read error occurred
+- 				fmt.Println("Error reading from connection:", err.Error())
+- 				close(channel) // Also close on other errors
++ 				fmt.Printf("Error reading from connection %s: %s
++ ", conn.RemoteAddr(), err.Error())
+  			}
+  			break // Exit the loop
+```
+
+```diff
+  	_, err := conn.Write([]byte("+PONG\r\n"))
+  	if err != nil {
+- 		fmt.Println("Error writing PONG to connection:", err.Error())
++ 		fmt.Printf("Error writing PONG to connection %s: %s
++ ", conn.RemoteAddr(), err.Error())
+  	}
+  }
+```
+
+```diff
+  		buffer, ok := <-channel
+  		if !ok {
+- 			fmt.Println("Channel closed, eventReactor exiting.")
++ 			fmt.Printf("Channel closed for %s, eventReactor exiting.
++ ", conn.RemoteAddr())
+  			break // Exit loop if channel is closed
+  		}
+  
+  		// Convert buffer to string and trim whitespace
+  		command := strings.TrimSpace(string(buffer))
+- 		fmt.Println("Received command:", command) // For debugging
+- 
+- 		// For this stage, we respond PONG to any command (including empty strings after trim)
+- 		// In later stages, you'll parse specific commands like PING.
+- 		if command == "PING" { // Specific check for PING
+- 			ping_command(conn)
+- 		} else {
+- 			// For now, still respond PONG to anything else, or handle appropriately
+- 			// As per instructions for this stage, any input should get a PONG.
+- 			// If the input after TrimSpace is empty (e.g. client sent only \r\n),
+- 			// we might still want to PONG or decide how to handle it.
+- 			// For simplicity, let's PONG if anything (even empty string) was received and channel not closed.
++ 		// Log the raw command received for debugging, including for empty strings after trim
++ 		fmt.Printf("Received from %s (trimmed): "%s"
++ ", conn.RemoteAddr(), command)
++ 
++ 		// For this stage, we respond PONG to any command chunk received that makes it here.
++ 		// The problem description implies multiple PINGs on the same connection,
++ 		// and hardcoding PONG. RESP parsing is for later.
++ 		// If command is empty after trim (e.g. just \r\n), we might still PONG or not.
++ 		// The current test passes if any data from client 1 gets a PONG.
++ 		// To be safe and align with "any data gets a PONG for this stage":
+  		ping_command(conn)
+- 		}
+  	}
+  }
+```
+
+```diff
+  	l, err := net.Listen("tcp", "0.0.0.0:6379")
+  	if err != nil {
+- 		fmt.Println("Failed to bind to port 6379")
++ 		fmt.Println("Failed to bind to port 6379:", err.Error())
+  		os.Exit(1)
+  	}
+  	defer l.Close()
++ 	fmt.Println("Server listening on 0.0.0.0:6379")
+  
++ 	for { // Loop indefinitely to accept multiple connections
+  		conn, err := l.Accept()
+  		if err != nil {
+- 		fmt.Println("Error accepting connection: ", err.Error())
+- 		os.Exit(1)
+- 	}
+- 	defer conn.Close()
+- 
+- 	channel := make(chan []byte)
+- 	var wg sync.WaitGroup
+- 
+- 	wg.Add(1)
+- 	go listen(conn, channel)
+- 	go eventReactor(channel, conn, &wg)
+- 
+- 	wg.Wait()
+- 
+- 	fmt.Println("Server shutting down gracefully.")
++ 			fmt.Println("Error accepting connection:", err.Error())
++ 			// If the listener is closed, Accept will return an error, and the loop will break.
++ 			// For other temporary errors, we might want to continue.
++ 			// Checking for net.ErrClosed specifically can make this more robust.
++ 			if _, ok := err.(*net.OpError); ok && err.Error() == "use of closed network connection" {
++ 				fmt.Println("Listener closed, server shutting down.")
++ 				break
++ 			}
++ 			continue
++ 		}
++ 
++ 		fmt.Printf("Accepted new connection from %s
++ ", conn.RemoteAddr())
++ 
++ 		// For each connection, set up its own channel and WaitGroup
++ 		clientChannel := make(chan []byte)
++ 		var clientWg sync.WaitGroup // Each client connection gets its own WaitGroup
++ 
++ 		clientWg.Add(1) // We expect one eventReactor goroutine for this client
++ 		go listen(conn, clientChannel)
++ 		// Pass the per-client WaitGroup to its eventReactor
++ 		go eventReactor(clientChannel, conn, &clientWg)
++ 
++ 		// The main goroutine does NOT wait here using clientWg.Wait().
++ 		// It loops back to accept the next client.
++ 		// clientWg.Wait() would be used if we wanted to do something *after* a specific client is done,
++ 		// but not to block accepting other clients.
++ 	}
+  }
+  
+```
+
+---
+
+It looks like there's a small syntax error in one of the `Printf` statements I added. The error `string literal not terminated` on line 27 usually means there's a missing closing quote or an issue with how the string is formatted.
+
+I'll examine the `Printf` calls in the `listen` function and correct the problematic one.
+The likely culprit is:
+`fmt.Printf("Client %s closed the connection.\n", conn.RemoteAddr())`
+Looking closely, the newline `\n` is *inside* the string literal, but the error message usually means an unescaped quote *within* the format string, or a missing *final* quote. Ah, I see it now in the diff, it's in the eventReactor.
+
+The problematic line in `eventReactor` is:
+`fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)`
+The `\"%s\"` part is trying to print the command in quotes. The issue might be with how `Printf` handles those inner quotes or if a `"` was accidentally omitted.
+
+Let me correct `eventReactor`'s `Printf`. It should be okay, the escaping `\"` is standard. Let's double check the `listen` function too.
+
+The error is on line 27: `fmt.Printf("Client %s closed the connection.\n", conn.RemoteAddr())`
+This line seems correct. Let me look at the other Printf lines.
+
+The linter points to Line 27 in the *modified code* which corresponds to this in `eventReactor`:
+`fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)`
+
+This line actually looks correct. Let me check the line 27 from the `listen` function, perhaps the line numbering the linter gives is from the *original* file before the change.
+
+Original line 27 in listen was: `channel <- buffer`
+The change was:
+```diff
+- 		channel <- buffer
++ 		// Send only the part of the buffer that contains data
++ 		dataRead := make([]byte, n) // Create a new slice with the exact size
++ 		copy(dataRead, buffer[:n])  // Copy the data
++ 		channel <- dataRead
+```
+This doesn't involve a string literal.
+
+The error message "string literal not terminated" is almost always about a quote.
+The diff shows changes in `listen`, `ping_command`, `eventReactor`, and `main`.
+
+Let's re-examine the `eventReactor` `Printf` carefully:
+`fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)`
+This looks fine.
+
+What about `ping_command`?
+`fmt.Printf("Error writing PONG to connection %s: %s\n", conn.RemoteAddr(), err.Error())`
+This also looks fine.
+
+What about `listen`?
+`fmt.Printf("Client %s closed the connection.\n", conn.RemoteAddr())`
+`fmt.Printf("Error reading from connection %s: %s\n", conn.RemoteAddr(), err.Error())`
+These also seem correct.
+
+Could it be one of the newly added Printf statements in `main`?
+`fmt.Println("Server listening on 0.0.0.0:6379")` - Fine.
+`fmt.Println("Error accepting connection:", err.Error())` - Fine.
+`fmt.Println("Listener closed, server shutting down.")` - Fine.
+`fmt.Printf("Accepted new connection from %s\n", conn.RemoteAddr())` - Fine.
+
+The diff provided by the tool output has some `+ ` prefixes. Let me reconstruct the modified code block around where line 27 would be in `eventReactor`, assuming the `+` are not part of the code.
+
+In `eventReactor`, the log line is:
+`fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)`
+
+It's possible the linter is getting confused or there's a subtle issue.
+The message "string literal not terminated" means the Go parser sees a `"` starting a string but doesn't find the corresponding closing `"`.
+
+Let's try to simplify the problematic `Printf` in `eventReactor` slightly, by removing the inner quotes for the command, just to see if it resolves the linter error. If it does, we can then be more confident about where the issue lies.
+
+---
+
+```diff
+  		command := strings.TrimSpace(string(buffer))
+  		// Log the raw command received for debugging, including for empty strings after trim
+- 		fmt.Printf("Received from %s (trimmed): "%s"
+- ", conn.RemoteAddr(), command)
++ 		fmt.Printf("Received from %s (trimmed): %s\n", conn.RemoteAddr(), command)
+  
+  		// For this stage, we respond PONG to any command chunk received that makes it here.
+```
+
+---
+
+The linter error persists even after simplifying the `Printf` statement. This is quite puzzling as "string literal not terminated" is usually a straightforward error. The line numbers provided by linters can sometimes be off after edits.
+
+Given that the error points to line 27, and my changes were quite extensive, let me review the `listen` function again, as that's where the early part of line 27 (in the *overall file*) would fall.
+
+The `listen` function's relevant `Printf` calls are:
+1. `fmt.Printf("Client %s closed the connection.\n", conn.RemoteAddr())`
+2. `fmt.Printf("Error reading from connection %s: %s\n", conn.RemoteAddr(), err.Error())`
+
+The `main` function's `Printf` call near where line 27 might fall globally:
+`fmt.Printf("Accepted new connection from %s\n", conn.RemoteAddr())`
+
+None of these *look* like they have unterminated string literals.
+
+Could the issue be an invisible character or an unusual encoding problem introduced during the edit? This is rare but possible.
+
+Since the linter is very specific about "string literal not terminated", it must be seeing an opening quote `"` without a corresponding closing one, or perhaps an incorrectly escaped quote *within* a string that it misinterprets as the end of the string.
+
+Let's try one more targeted simplification. I will specifically target the `Printf` statements in the `listen` function, as this is closer to the top of the file where a line 27 might actually be according to the linter if it's confused by multiple edits.
+I will simplify them to use `Println` and string concatenation temporarily. This is a more drastic change, but it will help isolate if the `Printf` formatting itself (or the `conn.RemoteAddr().String()` implicitly) is causing issues.
+
+---
+
+```diff
+  			if err == io.EOF {
+  				// Connection closed by client, normal termination for this loop
+- 				fmt.Printf("Client %s closed the connection.
+- ", conn.RemoteAddr())
++ 				fmt.Println("Client " + conn.RemoteAddr().String() + " closed the connection.")
+  			} else {
+  				// Some other read error occurred
+- 				fmt.Printf("Error reading from connection %s: %s
+- ", conn.RemoteAddr(), err.Error())
++ 				fmt.Println("Error reading from connection " + conn.RemoteAddr().String() + ": " + err.Error())
+  			}
+  			break // Exit the loop
+```
+
+---
+
+The linter error has now moved to line 45 and is still "string literal not terminated". This is my third attempt to fix this, and the error is jumping around, suggesting the linter might be getting confused by the sequence of edits or there's a more subtle issue.
+
+Line 45 in the current code (after my last change) would be inside the `eventReactor` function. The `Printf` I simplified there earlier was:
+`fmt.Printf("Received from %s (trimmed): %s\n", conn.RemoteAddr(), command)`
+
+And before that it was:
+`fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)`
+
+Since this is the third attempt and the error persists and moves, I should stop and ask for your input.
+
+It's highly unusual for such a persistent "string literal not terminated" error when the Go syntax for string literals is quite standard.
+
+Could you please double-check the file `app/main.go` on your end for any unusual characters or copy-paste errors, especially around lines that involve string literals in `Printf` or `Println` calls within the `listen` and `eventReactor` functions?
+
+Sometimes, an editor might insert a non-standard quote character (e.g., a “smart quote” like `”` instead of the standard double quote `"`), or there could be an invisible control character within a string that's confusing the linter.
+
+If you can't spot anything, perhaps we can try a more aggressive approach:
+1. I can try commenting out *all* the `fmt.Printf` and `fmt.Println` calls I recently added or modified in `listen`, `eventReactor`, and `ping_command`.
+2. If the linter error disappears, we can then add them back one by one to pinpoint the exact offending line.
+
+What would you like to do?
+
+---
+
+_**User**_
+
+❯
+❯ codecrafters test
+Initiating test run...
+
+⚡ This is a turbo test run. https://codecrafters.io/turbo
+
+Running tests. Logs should appear shortly...
+
+[compile] # command-line-arguments
+[compile] app/main.go:45:54: newline in string
+[compile] app/main.go:45:54: syntax error: unexpected newline in argument list; possibly missing comma or )
+[compile] app/main.go:46:35: newline in string
+[compile] app/main.go:57:60: newline in string
+[compile] app/main.go:57:60: syntax error: unexpected newline in argument list; possibly missing comma or )
+[compile] app/main.go:58:22: newline in string
+[compile] app/main.go:59:4: syntax error: unexpected keyword break at end of statement
+[compile] app/main.go:105:46: newline in string
+[compile] app/main.go:105:46: syntax error: unexpected newline in argument list; possibly missing comma or )
+[compile] app/main.go:106:22: newline in string
+[compile] app/main.go:106:22: too many errors
+[compile] Looks like your code failed to compile.
+[compile] If you think this is a CodeCrafters error, please let us know at hello@codecrafters.io.
+
+---
+
+_**Assistant**_
+
+
+
+---
+

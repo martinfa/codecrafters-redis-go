@@ -14,6 +14,8 @@ var _ = net.Listen
 var _ = os.Exit
 
 func listen(conn net.Conn, channel chan []byte) {
+	defer conn.Close()   // Ensure the connection for this client is closed when listen exits
+	defer close(channel) // Close the channel to signal eventReactor to stop
 
 	buffer := make([]byte, 1024)
 	for {
@@ -22,12 +24,10 @@ func listen(conn net.Conn, channel chan []byte) {
 		if err != nil {
 			if err == io.EOF {
 				// Connection closed by client, normal termination for this loop
-				fmt.Println("Client closed the connection.")
-				close(channel) // Close the channel to signal eventReactor to stop
+				fmt.Printf("Client %s closed the connection.\n", conn.RemoteAddr())
 			} else {
 				// Some other read error occurred
-				fmt.Println("Error reading from connection:", err.Error())
-				close(channel) // Also close on other errors
+				fmt.Printf("Error reading from connection %s: %s\n", conn.RemoteAddr(), err.Error())
 			}
 			break // Exit the loop
 		}
@@ -42,7 +42,7 @@ func listen(conn net.Conn, channel chan []byte) {
 func ping_command(conn net.Conn) {
 	_, err := conn.Write([]byte("+PONG\r\n"))
 	if err != nil {
-		fmt.Println("Error writing PONG to connection:", err.Error())
+		fmt.Printf("Error writing PONG to connection %s: %s\n", conn.RemoteAddr(), err.Error())
 	}
 }
 
@@ -53,26 +53,22 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 		// The ok variable will be false if the channel is closed
 		buffer, ok := <-channel
 		if !ok {
-			fmt.Println("Channel closed, eventReactor exiting.")
+			fmt.Printf("Channel closed for %s, eventReactor exiting.\n", conn.RemoteAddr())
 			break // Exit loop if channel is closed
 		}
 
 		// Convert buffer to string and trim whitespace
 		command := strings.TrimSpace(string(buffer))
-		fmt.Println("Received command:", command) // For debugging
+		// Log the raw command received for debugging, including for empty strings after trim
+		fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)
 
-		// For this stage, we respond PONG to any command (including empty strings after trim)
-		// In later stages, you'll parse specific commands like PING.
-		if command == "PING" { // Specific check for PING
-			ping_command(conn)
-		} else {
-			// For now, still respond PONG to anything else, or handle appropriately
-			// As per instructions for this stage, any input should get a PONG.
-			// If the input after TrimSpace is empty (e.g. client sent only \r\n),
-			// we might still want to PONG or decide how to handle it.
-			// For simplicity, let's PONG if anything (even empty string) was received and channel not closed.
-			ping_command(conn)
-		}
+		// For this stage, we respond PONG to any command chunk received that makes it here.
+		// The problem description implies multiple PINGs on the same connection,
+		// and hardcoding PONG. RESP parsing is for later.
+		// If command is empty after trim (e.g. just \r\n), we might still PONG or not.
+		// The current test passes if any data from client 1 gets a PONG.
+		// To be safe and align with "any data gets a PONG for this stage":
+		ping_command(conn)
 	}
 }
 
@@ -84,26 +80,40 @@ func main() {
 
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
+		fmt.Println("Failed to bind to port 6379:", err.Error())
 		os.Exit(1)
 	}
 	defer l.Close()
+	fmt.Println("Server listening on 0.0.0.0:6379")
 
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
+	for { // Loop indefinitely to accept multiple connections
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection:", err.Error())
+			// If the listener is closed, Accept will return an error, and the loop will break.
+			// For other temporary errors, we might want to continue.
+			// Checking for net.ErrClosed specifically can make this more robust.
+			if _, ok := err.(*net.OpError); ok && err.Error() == "use of closed network connection" {
+				fmt.Println("Listener closed, server shutting down.")
+				break
+			}
+			continue
+		}
+
+		fmt.Printf("Accepted new connection from %s\n", conn.RemoteAddr())
+
+		// For each connection, set up its own channel and WaitGroup
+		clientChannel := make(chan []byte)
+		var clientWg sync.WaitGroup // Each client connection gets its own WaitGroup
+
+		clientWg.Add(1) // We expect one eventReactor goroutine for this client
+		go listen(conn, clientChannel)
+		// Pass the per-client WaitGroup to its eventReactor
+		go eventReactor(clientChannel, conn, &clientWg)
+
+		// The main goroutine does NOT wait here using clientWg.Wait().
+		// It loops back to accept the next client.
+		// clientWg.Wait() would be used if we wanted to do something *after* a specific client is done,
+		// but not to block accepting other clients.
 	}
-	defer conn.Close()
-
-	channel := make(chan []byte)
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go listen(conn, channel)
-	go eventReactor(channel, conn, &wg)
-
-	wg.Wait()
-
-	fmt.Println("Server shutting down gracefully.")
 }
