@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -57,18 +56,37 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 			break // Exit loop if channel is closed
 		}
 
-		// Convert buffer to string and trim whitespace
-		command := strings.TrimSpace(string(buffer))
-		// Log the raw command received for debugging, including for empty strings after trim
-		fmt.Printf("Received from %s (trimmed): \"%s\"\n", conn.RemoteAddr(), command)
+		// Parse the RESP command
+		parser := NewRESPParser()
+		cmd, err := parser.Parse(buffer)
+		if err != nil {
+			fmt.Printf("Error parsing RESP message: %s\n", err.Error())
+			continue
+		}
 
-		// For this stage, we respond PONG to any command chunk received that makes it here.
-		// The problem description implies multiple PINGs on the same connection,
-		// and hardcoding PONG. RESP parsing is for later.
-		// If command is empty after trim (e.g. just \r\n), we might still PONG or not.
-		// The current test passes if any data from client 1 gets a PONG.
-		// To be safe and align with "any data gets a PONG for this stage":
-		ping_command(conn)
+		if cmd != nil {
+			fmt.Printf("Parsed command from %s: Type=%s, Args=%v\n", conn.RemoteAddr(), cmd.Type.String(), cmd.Args)
+
+			// Handle different command types
+			var response string
+			switch cmd.Type {
+			case CmdECHO:
+				response = HandleEcho(cmd)
+			case CmdPING:
+				response = "+PONG\r\n"
+			default:
+				response = "-ERR unknown command\r\n"
+			}
+
+			// Send response back to client
+			_, err := conn.Write([]byte(response))
+			if err != nil {
+				fmt.Printf("Error writing response to connection %s: %s\n", conn.RemoteAddr(), err.Error())
+				// Don't break here - connection might be closed by client, but that's normal
+			} else {
+				fmt.Printf("Sent response to %s: %q\n", conn.RemoteAddr(), response)
+			}
+		}
 	}
 }
 
