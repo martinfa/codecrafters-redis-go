@@ -56,6 +56,24 @@ func TestParse_RedisCommands(t *testing.T) {
 			hasError: false,
 		},
 		{
+			name:  "SET command",
+			input: "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+			expected: &RedisCommand{
+				Type: CmdSET,
+				Args: []string{"key", "value"},
+			},
+			hasError: false,
+		},
+		{
+			name:  "GET command",
+			input: "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n",
+			expected: &RedisCommand{
+				Type: CmdGET,
+				Args: []string{"key"},
+			},
+			hasError: false,
+		},
+		{
 			name:  "unknown command",
 			input: "*2\r\n$7\r\nUNKNOWN\r\n$3\r\narg\r\n",
 			expected: &RedisCommand{

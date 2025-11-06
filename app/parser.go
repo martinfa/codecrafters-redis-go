@@ -12,6 +12,8 @@ const (
 	CmdUnknown CommandType = iota
 	CmdPING
 	CmdECHO
+	CmdSET
+	CmdGET
 )
 
 // String returns the string representation of the command type
@@ -21,6 +23,10 @@ func (c CommandType) String() string {
 		return "PING"
 	case CmdECHO:
 		return "ECHO"
+	case CmdSET:
+		return "SET"
+	case CmdGET:
+		return "GET"
 	default:
 		return "UNKNOWN"
 	}
@@ -33,6 +39,10 @@ func ParseCommandType(name string) CommandType {
 		return CmdPING
 	case "ECHO":
 		return CmdECHO
+	case "SET":
+		return CmdSET
+	case "GET":
+		return CmdGET
 	default:
 		return CmdUnknown
 	}
@@ -191,4 +201,3 @@ func (p *RESPParser) parseBulkStringElement(data []byte, startPos int) (string, 
 
 	return value, newPos, nil
 }
-

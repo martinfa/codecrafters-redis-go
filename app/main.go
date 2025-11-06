@@ -72,6 +72,10 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 			switch cmd.Type {
 			case CmdECHO:
 				response = HandleEcho(cmd)
+			case CmdSET:
+				response = HandleSet(cmd)
+			case CmdGET:
+				response = HandleGet(cmd)
 			case CmdPING:
 				response = "+PONG\r\n"
 			default:
