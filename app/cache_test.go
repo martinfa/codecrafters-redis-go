@@ -89,14 +89,19 @@ func TestHandleSetWithPXIntegration(t *testing.T) {
 		t.Errorf("expected +OK\\r\\n, got %s", result)
 	}
 
+	// Immediately get the key - should return the value (not expired yet)
+	if v := GetInstance().Get("mykey"); v != "myvalue" {
+		t.Errorf("expected 'myvalue' immediately after SET, got %v", v)
+	}
+
 	// Verify the key was set with correct expiration
 	cache := GetInstance()
 	if item, exists := cache.cache["mykey"]; !exists {
 		t.Fatal("key should exist in cache")
 	} else {
-		// PX 1000 means expire in 1000ms = 1 second
-		expectedExp := time.Now().Unix() + 1 // 1000ms = 1 second
-		if item.Expiration < expectedExp-1 || item.Expiration > expectedExp+1 {
+		// PX 1000 means expire in 1000ms = 1 second from now
+		expectedExp := time.Now().Add(1000 * time.Millisecond).UnixMilli()
+		if item.Expiration < expectedExp-100 || item.Expiration > expectedExp+100 { // Allow 100ms tolerance
 			t.Errorf("expected expiration around %d, got %d", expectedExp, item.Expiration)
 		}
 		if item.Value != "myvalue" {
@@ -110,5 +115,87 @@ func TestHandleSetWithPXIntegration(t *testing.T) {
 	// Key should be gone after expiration (Get should return nil and delete it)
 	if v := cache.Get("mykey"); v != nil {
 		t.Errorf("key should have expired, got %v", v)
+	}
+}
+
+// Test that reproduces the Redis tester failure: SET with PX followed by immediate GET returns null
+func TestReproduceRedisTesterFailure(t *testing.T) {
+	// Clear cache to start fresh
+	GetInstance().cache = make(map[string]CacheItem)
+
+	// Simulate the failing scenario: SET raspberry <value> PX 1000, then immediate GET
+	cmd := &RedisCommand{
+		Type: CmdSET,
+		Args: []string{"raspberry", "strawberry", "PX", "1000"},
+	}
+
+	// Call HandleSet
+	result := HandleSet(cmd)
+	if result != "+OK\r\n" {
+		t.Errorf("SET should return OK, got %s", result)
+	}
+
+	// Immediately call HandleGet for "raspberry"
+	getCmd := &RedisCommand{
+		Type: CmdGET,
+		Args: []string{"raspberry"},
+	}
+
+	getResult := HandleGet(getCmd)
+
+	// This should return the value, but in the buggy version it returns "$-1\r\n" (null)
+	expected := "$10\r\nstrawberry\r\n" // Bulk string: $10\r\nstrawberry\r\n
+	if getResult != expected {
+		t.Errorf("Expected bulk string %q, got %q (this reproduces the Redis tester failure)", expected, getResult)
+	}
+}
+
+// Test the specific RESP command: SET pineapple apple PX 100
+func TestSetPineappleApplePX100(t *testing.T) {
+	// Clear cache
+	GetInstance().cache = make(map[string]CacheItem)
+
+	// Create the exact command from the RESP string: SET pineapple apple PX 100
+	cmd := &RedisCommand{
+		Type: CmdSET,
+		Args: []string{"pineapple", "apple", "PX", "100"},
+	}
+
+	// Execute SET command
+	result := HandleSet(cmd)
+	if result != "+OK\r\n" {
+		t.Errorf("SET should return +OK\\r\\n, got %s", result)
+	}
+
+	// Immediately verify the key exists and has the correct value
+	getCmd := &RedisCommand{
+		Type: CmdGET,
+		Args: []string{"pineapple"},
+	}
+	getResult := HandleGet(getCmd)
+
+	expected := "$5\r\napple\r\n" // "apple" is 5 characters
+	if getResult != expected {
+		t.Errorf("Expected bulk string %q for 'apple', got %q", expected, getResult)
+	}
+
+	// Verify the expiration time is set correctly (100ms from now)
+	cache := GetInstance()
+	if item, exists := cache.cache["pineapple"]; !exists {
+		t.Fatal("pineapple key should exist in cache")
+	} else {
+		expectedExp := time.Now().Add(100 * time.Millisecond).UnixMilli()
+		if item.Expiration < expectedExp-10 || item.Expiration > expectedExp+10 { // Allow 10ms tolerance
+			t.Errorf("Expected expiration around %d, got %d", expectedExp, item.Expiration)
+		}
+	}
+
+	// Wait for expiration (PX 100 = 100ms, wait 150ms to be safe)
+	time.Sleep(150 * time.Millisecond)
+
+	// Verify the key has expired
+	getResultAfter := HandleGet(getCmd)
+	if getResultAfter != "$-1\r\n" {
+		t.Errorf("Expected null bulk string after expiration, got %q", getResultAfter)
 	}
 }

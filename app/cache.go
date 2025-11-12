@@ -8,7 +8,7 @@ import (
 
 type CacheItem struct {
 	Value      interface{}
-	Expiration int64
+	Expiration int64 // Unix timestamp in milliseconds
 }
 
 type Cache struct {
@@ -40,11 +40,11 @@ func (c *Cache) Set(key string, value interface{}, options map[string]interface{
 	expiration := int64(0)
 	now := time.Now()
 	if options["EX"] != nil {
-		expiration = now.Unix() + int64(options["EX"].(int))
+		expiration = now.Add(time.Duration(options["EX"].(int)) * time.Second).UnixMilli()
 	}
 
 	if options["PX"] != nil {
-		expiration = now.Unix() + int64(options["PX"].(int))/1000
+		expiration = now.Add(time.Duration(options["PX"].(int)) * time.Millisecond).UnixMilli()
 	}
 
 	fmt.Println("expiration", expiration)
@@ -61,7 +61,7 @@ func (c *Cache) Get(key string) interface{} {
 
 	item := c.cache[key]
 	fmt.Println("item", item)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	fmt.Println("now", now, "expiration", item.Expiration, "now >= exp?", now >= item.Expiration)
 	if item.Expiration > 0 && now >= item.Expiration {
 		delete(c.cache, key)
