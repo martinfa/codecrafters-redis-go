@@ -4,7 +4,7 @@ import "testing"
 
 func TestHandleGet(t *testing.T) {
 	// Clear cache before tests
-	GetInstance().cache = make(map[string]interface{})
+	GetInstance().cache = make(map[string]CacheItem)
 
 	tests := []struct {
 		name     string
@@ -15,7 +15,7 @@ func TestHandleGet(t *testing.T) {
 		{
 			name: "get existing key",
 			setup: func() {
-				Set("test_key", "test_value")
+				Set("test_key", "test_value", map[string]interface{}{})
 			},
 			cmd: &RedisCommand{
 				Type: CmdGET,
@@ -61,7 +61,7 @@ func TestHandleGet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear cache for each test
-			GetInstance().cache = make(map[string]interface{})
+			GetInstance().cache = make(map[string]CacheItem)
 
 			// Setup test data
 			if tt.setup != nil {
