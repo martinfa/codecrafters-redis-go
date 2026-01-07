@@ -14,6 +14,7 @@ const (
 	CmdECHO
 	CmdSET
 	CmdGET
+	CmdCONFIG
 )
 
 // String returns the string representation of the command type
@@ -27,6 +28,8 @@ func (c CommandType) String() string {
 		return "SET"
 	case CmdGET:
 		return "GET"
+	case CmdCONFIG:
+		return "CONFIG"
 	default:
 		return "UNKNOWN"
 	}
@@ -43,6 +46,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdSET
 	case "GET":
 		return CmdGET
+	case "CONFIG":
+		return CmdCONFIG
 	default:
 		return CmdUnknown
 	}

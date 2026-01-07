@@ -76,6 +76,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 				response = HandleSet(cmd)
 			case CmdGET:
 				response = HandleGet(cmd)
+			case CmdCONFIG:
+				response = HandleConfig(cmd)
 			case CmdPING:
 				response = "+PONG\r\n"
 			default:
@@ -95,6 +97,9 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 }
 
 func main() {
+	// Parse command-line arguments
+	ParseConfig()
+
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
