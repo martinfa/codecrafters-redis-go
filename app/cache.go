@@ -39,12 +39,14 @@ func (c *Cache) Set(key string, value interface{}, options map[string]interface{
 
 	expiration := int64(0)
 	now := time.Now()
-	if options["EX"] != nil {
-		expiration = now.Add(time.Duration(options["EX"].(int)) * time.Second).UnixMilli()
-	}
+	if options != nil {
+		if val, ok := options["EX"]; ok && val != nil {
+			expiration = now.Add(time.Duration(val.(int)) * time.Second).UnixMilli()
+		}
 
-	if options["PX"] != nil {
-		expiration = now.Add(time.Duration(options["PX"].(int)) * time.Millisecond).UnixMilli()
+		if val, ok := options["PX"]; ok && val != nil {
+			expiration = now.Add(time.Duration(val.(int)) * time.Millisecond).UnixMilli()
+		}
 	}
 
 	fmt.Println("expiration", expiration)
@@ -53,6 +55,16 @@ func (c *Cache) Set(key string, value interface{}, options map[string]interface{
 		Expiration: expiration,
 	}
 	fmt.Println("cache", c.cache)
+}
+
+func (c *Cache) SetWithExpiry(key string, value interface{}, expirationMs int64) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.cache[key] = CacheItem{
+		Value:      value,
+		Expiration: expirationMs,
+	}
 }
 
 func (c *Cache) Get(key string) interface{} {
@@ -69,6 +81,20 @@ func (c *Cache) Get(key string) interface{} {
 	}
 
 	return item.Value
+}
+
+func (c *Cache) GetAllKeys() []string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	keys := make([]string, 0, len(c.cache))
+	now := time.Now().UnixMilli()
+	for k, item := range c.cache {
+		if item.Expiration == 0 || now < item.Expiration {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 // Global convenience functions for direct access

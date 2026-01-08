@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -78,6 +79,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 				response = HandleGet(cmd)
 			case CmdCONFIG:
 				response = HandleConfig(cmd)
+			case CmdKEYS:
+				response = HandleKeys(cmd)
 			case CmdPING:
 				response = "+PONG\r\n"
 			default:
@@ -99,6 +102,16 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 func main() {
 	// Parse command-line arguments
 	ParseConfig()
+
+	// Load RDB file
+	config := GetConfig()
+	if config.Dir != "" && config.DbFilename != "" {
+		rdbPath := filepath.Join(config.Dir, config.DbFilename)
+		err := LoadRDB(rdbPath)
+		if err != nil {
+			fmt.Printf("Error loading RDB file: %s\n", err.Error())
+		}
+	}
 
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
