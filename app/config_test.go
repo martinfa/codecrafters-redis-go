@@ -83,3 +83,63 @@ func TestParseConfig_WithOtherFlags(t *testing.T) {
 		t.Errorf("Expected dbfilename 'test.rdb', got '%s'", config.DbFilename)
 	}
 }
+
+func TestParseConfig_ReplicaOf(t *testing.T) {
+	// Save original command line arguments
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Set up test arguments with replicaof flag
+	os.Args = []string{"test", "-replicaof", "localhost 6379"}
+
+	// Reset flag state
+	flag.CommandLine = flag.NewFlagSet("test", flag.ExitOnError)
+
+	// Reset config
+	serverConfig = Config{}
+
+	// Parse config
+	ParseConfig()
+
+	// Check that replica config is set correctly
+	config := GetConfig()
+	if !config.IsReplica {
+		t.Errorf("Expected IsReplica to be true, got false")
+	}
+	if config.MasterHost != "localhost" {
+		t.Errorf("Expected MasterHost 'localhost', got '%s'", config.MasterHost)
+	}
+	if config.MasterPort != "6379" {
+		t.Errorf("Expected MasterPort '6379', got '%s'", config.MasterPort)
+	}
+}
+
+func TestParseConfig_NoReplicaOf(t *testing.T) {
+	// Save original command line arguments
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Set up test arguments without replicaof flag
+	os.Args = []string{"test", "-port", "6380"}
+
+	// Reset flag state
+	flag.CommandLine = flag.NewFlagSet("test", flag.ExitOnError)
+
+	// Reset config
+	serverConfig = Config{}
+
+	// Parse config
+	ParseConfig()
+
+	// Check that replica config is not set
+	config := GetConfig()
+	if config.IsReplica {
+		t.Errorf("Expected IsReplica to be false, got true")
+	}
+	if config.MasterHost != "" {
+		t.Errorf("Expected MasterHost to be empty, got '%s'", config.MasterHost)
+	}
+	if config.MasterPort != "" {
+		t.Errorf("Expected MasterPort to be empty, got '%s'", config.MasterPort)
+	}
+}

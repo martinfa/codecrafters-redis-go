@@ -6,9 +6,14 @@ import "fmt"
 func HandleInfo(cmd *RedisCommand) string {
 	// INFO command can have 0 or 1 argument (section name)
 	// For this stage, we only support the replication section
-	// The response should be "role:master" as a bulk string
+	// The response should be "role:master" or "role:slave" based on configuration
 
-	response := "role:master"
+	config := GetConfig()
+	role := "master"
+	if config.IsReplica {
+		role = "slave"
+	}
+	response := fmt.Sprintf("role:%s", role)
 
 	// Format as RESP bulk string: $<length>\r\n<data>\r\n
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(response), response)
