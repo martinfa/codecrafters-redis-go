@@ -81,6 +81,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 				response = HandleConfig(cmd)
 			case CmdKEYS:
 				response = HandleKeys(cmd)
+			case CmdINFO:
+				response = HandleInfo(cmd)
 			case CmdPING:
 				response = "+PONG\r\n"
 			default:
