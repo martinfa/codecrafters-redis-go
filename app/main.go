@@ -118,13 +118,13 @@ func main() {
 
 	// Uncomment this block to pass the first stage
 
-	l, err := net.Listen("tcp", "0.0.0.0:6379")
+	l, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", config.Port))
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379:", err.Error())
+		fmt.Printf("Failed to bind to port %d: %s\n", config.Port, err.Error())
 		os.Exit(1)
 	}
 	defer l.Close()
-	fmt.Println("Server listening on 0.0.0.0:6379")
+	fmt.Printf("Server listening on 0.0.0.0:%d\n", config.Port)
 
 	for { // Loop indefinitely to accept multiple connections
 		conn, err := l.Accept()
