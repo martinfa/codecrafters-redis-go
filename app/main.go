@@ -107,6 +107,16 @@ func main() {
 
 	// Load RDB file
 	config := GetConfig()
+
+	// If we are a replica, initiate handshake with master
+	if config.IsReplica {
+		go func() {
+			if err := InitiateHandshake(config); err != nil {
+				fmt.Printf("Error during handshake: %v\n", err)
+			}
+		}()
+	}
+
 	if config.Dir != "" && config.DbFilename != "" {
 		rdbPath := filepath.Join(config.Dir, config.DbFilename)
 		err := LoadRDB(rdbPath)

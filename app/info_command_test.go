@@ -24,7 +24,7 @@ func TestHandleInfo(t *testing.T) {
 				Type: CmdINFO,
 				Args: []string{},
 			},
-			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
+			expected: "$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with replication argument - master",
@@ -37,7 +37,7 @@ func TestHandleInfo(t *testing.T) {
 				Type: CmdINFO,
 				Args: []string{"replication"},
 			},
-			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
+			expected: "$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with multiple arguments - master",
@@ -50,7 +50,7 @@ func TestHandleInfo(t *testing.T) {
 				Type: CmdINFO,
 				Args: []string{"replication", "extra"},
 			},
-			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
+			expected: "$87\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command without arguments - replica",
@@ -63,7 +63,7 @@ func TestHandleInfo(t *testing.T) {
 				Type: CmdINFO,
 				Args: []string{},
 			},
-			expected: "$84\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
+			expected: "$86\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with replication argument - replica",
@@ -76,7 +76,7 @@ func TestHandleInfo(t *testing.T) {
 				Type: CmdINFO,
 				Args: []string{"replication"},
 			},
-			expected: "$84\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
+			expected: "$86\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 	}
 
