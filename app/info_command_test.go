@@ -17,56 +17,66 @@ func TestHandleInfo(t *testing.T) {
 			name: "info command without arguments - master",
 			setup: func() {
 				serverConfig.IsReplica = false
+				serverConfig.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+				serverConfig.MasterReplOffset = 0
 			},
 			cmd: &RedisCommand{
 				Type: CmdINFO,
 				Args: []string{},
 			},
-			expected: "$11\r\nrole:master\r\n",
+			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with replication argument - master",
 			setup: func() {
 				serverConfig.IsReplica = false
+				serverConfig.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+				serverConfig.MasterReplOffset = 0
 			},
 			cmd: &RedisCommand{
 				Type: CmdINFO,
 				Args: []string{"replication"},
 			},
-			expected: "$11\r\nrole:master\r\n",
+			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with multiple arguments - master",
 			setup: func() {
 				serverConfig.IsReplica = false
+				serverConfig.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+				serverConfig.MasterReplOffset = 0
 			},
 			cmd: &RedisCommand{
 				Type: CmdINFO,
 				Args: []string{"replication", "extra"},
 			},
-			expected: "$11\r\nrole:master\r\n",
+			expected: "$85\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command without arguments - replica",
 			setup: func() {
 				serverConfig.IsReplica = true
+				serverConfig.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+				serverConfig.MasterReplOffset = 0
 			},
 			cmd: &RedisCommand{
 				Type: CmdINFO,
 				Args: []string{},
 			},
-			expected: "$10\r\nrole:slave\r\n",
+			expected: "$84\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 		{
 			name: "info command with replication argument - replica",
 			setup: func() {
 				serverConfig.IsReplica = true
+				serverConfig.MasterReplId = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+				serverConfig.MasterReplOffset = 0
 			},
 			cmd: &RedisCommand{
 				Type: CmdINFO,
 				Args: []string{"replication"},
 			},
-			expected: "$10\r\nrole:slave\r\n",
+			expected: "$84\r\nrole:slave\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\r\n",
 		},
 	}
 
