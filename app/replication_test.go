@@ -84,6 +84,18 @@ func TestInitiateHandshake_SendsPing(t *testing.T) {
 	// 10. Master responds with +OK
 	masterConn.Write([]byte("+OK\r\n"))
 
+	// 11. Verify PSYNC ? -1
+	assertRead("*3\r\n")
+	assertRead("$5\r\n")
+	assertRead("PSYNC\r\n")
+	assertRead("$1\r\n")
+	assertRead("?\r\n")
+	assertRead("$2\r\n")
+	assertRead("-1\r\n")
+
+	// 12. Master responds with +FULLRESYNC ...
+	masterConn.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
+
 	// Clean up
 	select {
 	case err := <-errCh:

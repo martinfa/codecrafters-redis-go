@@ -44,6 +44,13 @@ func InitiateHandshake(config Config) error {
 	}
 	fmt.Println("Handshake: Received OK for capa")
 
+	// Step 4: Send PSYNC ? -1
+	psyncCmd := "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"
+	if err := sendCommand(conn, reader, psyncCmd); err != nil {
+		return fmt.Errorf("PSYNC failed: %w", err)
+	}
+	fmt.Println("Handshake: Received FULLRESYNC (ignored for now)")
+
 	return nil
 }
 
