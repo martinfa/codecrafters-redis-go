@@ -85,6 +85,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 				response = HandleInfo(cmd)
 			case CmdPING:
 				response = "+PONG\r\n"
+			case CmdREPLCONF:
+				response = "+OK\r\n"
 			default:
 				response = "-ERR unknown command\r\n"
 			}

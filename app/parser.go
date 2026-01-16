@@ -17,6 +17,7 @@ const (
 	CmdCONFIG
 	CmdKEYS
 	CmdINFO
+	CmdREPLCONF
 )
 
 // String returns the string representation of the command type
@@ -36,6 +37,8 @@ func (c CommandType) String() string {
 		return "KEYS"
 	case CmdINFO:
 		return "INFO"
+	case CmdREPLCONF:
+		return "REPLCONF"
 	default:
 		return "UNKNOWN"
 	}
@@ -58,6 +61,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdKEYS
 	case "INFO":
 		return CmdINFO
+	case "REPLCONF":
+		return CmdREPLCONF
 	default:
 		return CmdUnknown
 	}
