@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -40,29 +41,48 @@ func TestInitiateHandshake_SendsPing(t *testing.T) {
 
 	// 5. Verify the PING command was received
 	reader := bufio.NewReader(masterConn)
-	received, err := reader.ReadString('\n') // Read *1\r\n
-	if err != nil {
-		t.Fatalf("Error reading from replica: %v", err)
-	}
-	if received != "*1\r\n" {
-		t.Errorf("Expected *1\\r\\n, got %q", received)
-	}
-
-	received, err = reader.ReadString('\n') // Read $4\r\n
-	if err != nil {
-		t.Fatalf("Error reading from replica: %v", err)
-	}
-	if received != "$4\r\n" {
-		t.Errorf("Expected $4\\r\\n, got %q", received)
+	// Helper to check for a specific string
+	assertRead := func(expected string) {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("Error reading: %v", err)
+		}
+		if line != expected {
+			t.Errorf("Expected %q, got %q", expected, line)
+		}
 	}
 
-	received, err = reader.ReadString('\n') // Read PING\r\n
-	if err != nil {
-		t.Fatalf("Error reading from replica: %v", err)
-	}
-	if received != "PING\r\n" {
-		t.Errorf("Expected PING\\r\\n, got %q", received)
-	}
+	assertRead("*1\r\n")
+	assertRead("$4\r\n")
+	assertRead("PING\r\n")
+
+	// 6. Master responds with +PONG
+	masterConn.Write([]byte("+PONG\r\n"))
+
+	// 7. Verify REPLCONF listening-port <PORT>
+	assertRead("*3\r\n")
+	assertRead("$8\r\n")
+	assertRead("REPLCONF\r\n")
+	assertRead("$14\r\n")
+	assertRead("listening-port\r\n")
+	portStr := fmt.Sprintf("%d", config.Port)
+	assertRead(fmt.Sprintf("$%d\r\n", len(portStr)))
+	assertRead(portStr + "\r\n")
+
+	// 8. Master responds with +OK
+	masterConn.Write([]byte("+OK\r\n"))
+
+	// 9. Verify REPLCONF capa psync2
+	assertRead("*3\r\n")
+	assertRead("$8\r\n")
+	assertRead("REPLCONF\r\n")
+	assertRead("$4\r\n")
+	assertRead("capa\r\n")
+	assertRead("$6\r\n")
+	assertRead("psync2\r\n")
+
+	// 10. Master responds with +OK
+	masterConn.Write([]byte("+OK\r\n"))
 
 	// Clean up
 	select {
@@ -70,7 +90,7 @@ func TestInitiateHandshake_SendsPing(t *testing.T) {
 		if err != nil {
 			t.Errorf("InitiateHandshake returned error: %v", err)
 		}
-	case <-time.After(100 * time.Millisecond):
-		// This is fine, the handshake might still be waiting for more steps in the future
+	case <-time.After(500 * time.Millisecond):
+		// This is fine
 	}
 }
