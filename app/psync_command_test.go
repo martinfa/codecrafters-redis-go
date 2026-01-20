@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -15,11 +14,17 @@ func TestHandlePsync(t *testing.T) {
 		Args: []string{"?", "-1"},
 	}
 
-	expected := "+FULLRESYNC test_id 0\r\n"
 	result := HandlePsync(cmd)
 
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
+	// Check for FULLRESYNC part
+	expectedPrefix := "+FULLRESYNC test_id 0\r\n"
+	if result[:len(expectedPrefix)] != expectedPrefix {
+		t.Errorf("Expected prefix %q, got %q", expectedPrefix, result[:len(expectedPrefix)])
+	}
+
+	// Check for RDB part ($<length>\r\nREDIS...)
+	if result[len(expectedPrefix):len(expectedPrefix)+1] != "$" {
+		t.Errorf("Expected $ at start of RDB part, got %q", result[len(expectedPrefix):len(expectedPrefix)+1])
 	}
 }
 
@@ -33,10 +38,10 @@ func TestHandlePsync_CustomOffset(t *testing.T) {
 		Args: []string{"?", "-1"},
 	}
 
-	expected := fmt.Sprintf("+FULLRESYNC abc 42\r\n")
 	result := HandlePsync(cmd)
 
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
+	expectedPrefix := "+FULLRESYNC abc 42\r\n"
+	if result[:len(expectedPrefix)] != expectedPrefix {
+		t.Errorf("Expected prefix %q, got %q", expectedPrefix, result[:len(expectedPrefix)])
 	}
 }
