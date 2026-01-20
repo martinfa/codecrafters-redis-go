@@ -83,6 +83,15 @@ func TestParse_RedisCommands(t *testing.T) {
 			hasError: false,
 		},
 		{
+			name:  "PSYNC command",
+			input: "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n",
+			expected: &RedisCommand{
+				Type: CmdPSYNC,
+				Args: []string{"?", "-1"},
+			},
+			hasError: false,
+		},
+		{
 			name:     "invalid - not an array",
 			input:    "$4\r\ntest\r\n",
 			expected: nil,
