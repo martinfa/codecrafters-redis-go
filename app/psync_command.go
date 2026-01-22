@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 )
 
 // HandlePsync processes the PSYNC command and returns a FULLRESYNC response followed by an empty RDB file
-func HandlePsync(cmd *RedisCommand) string {
+func HandlePsync(cmd *RedisCommand, conn net.Conn) string {
 	config := GetConfig()
 	// 1. The master responds with +FULLRESYNC <REPL_ID> <OFFSET>\r\n
 	fullResyncResp := fmt.Sprintf("+FULLRESYNC %s %d\r\n", config.MasterReplId, config.MasterReplOffset)
@@ -18,6 +19,9 @@ func HandlePsync(cmd *RedisCommand) string {
 
 	// Format: $<length>\r\n<contents> (no trailing \r\n)
 	rdbResp := fmt.Sprintf("$%d\r\n%s", len(rdbBytes), string(rdbBytes))
+
+	// Register this connection as a replica for future propagation
+	RegisterReplica(conn)
 
 	return fullResyncResp + rdbResp
 }

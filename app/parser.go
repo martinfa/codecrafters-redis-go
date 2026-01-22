@@ -21,6 +21,16 @@ const (
 	CmdPSYNC
 )
 
+// IsWrite returns true if the command is a write command
+func (c CommandType) IsWrite() bool {
+	switch c {
+	case CmdSET:
+		return true
+	default:
+		return false
+	}
+}
+
 // String returns the string representation of the command type
 func (c CommandType) String() string {
 	switch c {

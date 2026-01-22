@@ -68,6 +68,11 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 		if cmd != nil {
 			fmt.Printf("Parsed command from %s: Type=%s, Args=%v\n", conn.RemoteAddr(), cmd.Type.String(), cmd.Args)
 
+			// Propagate write commands to replicas
+			if cmd.Type.IsWrite() {
+				go PropagateCommand(buffer)
+			}
+
 			// Handle different command types
 			var response string
 			switch cmd.Type {
@@ -88,7 +93,7 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 			case CmdREPLCONF:
 				response = "+OK\r\n"
 			case CmdPSYNC:
-				response = HandlePsync(cmd)
+				response = HandlePsync(cmd, conn)
 			default:
 				response = "-ERR unknown command\r\n"
 			}

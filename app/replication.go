@@ -4,8 +4,38 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
+
+var (
+	replicas      []net.Conn
+	replicasMutex sync.Mutex
+)
+
+// RegisterReplica adds a new replica connection to the list of replicas
+func RegisterReplica(conn net.Conn) {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+	replicas = append(replicas, conn)
+	fmt.Printf("Registered new replica: %s. Total replicas: %d\n", conn.RemoteAddr(), len(replicas))
+}
+
+// PropagateCommand sends a command to all registered replicas
+func PropagateCommand(command []byte) {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	for _, replica := range replicas {
+		_, err := replica.Write(command)
+		if err != nil {
+			fmt.Printf("Error propagating command to replica %s: %v\n", replica.RemoteAddr(), err)
+			// In a real implementation, we might want to remove the failed replica
+		} else {
+			fmt.Printf("Propagated command to replica %s: %q\n", replica.RemoteAddr(), string(command))
+		}
+	}
+}
 
 // InitiateHandshake handles the replication handshake with the master server
 func InitiateHandshake(config Config) error {
