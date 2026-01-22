@@ -14,7 +14,7 @@ func TestHandlePsync(t *testing.T) {
 		Args: []string{"?", "-1"},
 	}
 
-	result := HandlePsync(cmd)
+	result := HandlePsync(cmd, nil)
 
 	// Check for FULLRESYNC part
 	expectedPrefix := "+FULLRESYNC test_id 0\r\n"
@@ -38,7 +38,7 @@ func TestHandlePsync_CustomOffset(t *testing.T) {
 		Args: []string{"?", "-1"},
 	}
 
-	result := HandlePsync(cmd)
+	result := HandlePsync(cmd, nil)
 
 	expectedPrefix := "+FULLRESYNC abc 42\r\n"
 	if result[:len(expectedPrefix)] != expectedPrefix {

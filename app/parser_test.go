@@ -14,13 +14,10 @@ func TestNewRESPParser(t *testing.T) {
 
 func TestParse_EmptyData(t *testing.T) {
 	parser := NewRESPParser()
-	result, err := parser.Parse([]byte{})
+	result, _, err := parser.Parse([]byte{})
 
-	if err == nil {
-		t.Error("Expected error for empty data, got nil")
-	}
-	if err.Error() != "empty data" {
-		t.Errorf("Expected error message 'empty data', got '%s'", err.Error())
+	if err != nil {
+		t.Errorf("Expected no error for empty data, got %v", err)
 	}
 	if result != nil {
 		t.Errorf("Expected result to be nil for empty data, got %v", result)
@@ -101,7 +98,7 @@ func TestParse_RedisCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parser.Parse([]byte(tt.input))
+			result, _, err := parser.Parse([]byte(tt.input))
 
 			if tt.hasError && err == nil {
 				t.Errorf("Expected error for input %q, got nil", tt.input)

@@ -46,7 +46,7 @@ func ping_command(conn net.Conn) {
 	}
 }
 
-func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
+func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMasterConn bool) {
 	defer wg.Done()
 	for {
 		// Wait for data from the listen goroutine
@@ -59,18 +59,25 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 
 		// Parse the RESP command
 		parser := NewRESPParser()
-		cmd, err := parser.Parse(buffer)
-		if err != nil {
-			fmt.Printf("Error parsing RESP message: %s\n", err.Error())
-			continue
-		}
 
-		if cmd != nil {
+		// Handle multiple commands in one buffer
+		pos := 0
+		for pos < len(buffer) {
+			cmd, nextPos, err := parser.Parse(buffer[pos:])
+			if err != nil {
+				fmt.Printf("Error parsing RESP message at pos %d: %s\n", pos, err.Error())
+				break
+			}
+
+			if cmd == nil {
+				break
+			}
+
 			fmt.Printf("Parsed command from %s: Type=%s, Args=%v\n", conn.RemoteAddr(), cmd.Type.String(), cmd.Args)
 
-			// Propagate write commands to replicas
-			if cmd.Type.IsWrite() {
-				go PropagateCommand(buffer)
+			// Propagate write commands to replicas (only if we are master)
+			if cmd.Type.IsWrite() && !isMasterConn {
+				go PropagateCommand(buffer[pos : pos+nextPos])
 			}
 
 			// Handle different command types
@@ -98,14 +105,19 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup) {
 				response = "-ERR unknown command\r\n"
 			}
 
-			// Send response back to client
-			_, err := conn.Write([]byte(response))
-			if err != nil {
-				fmt.Printf("Error writing response to connection %s: %s\n", conn.RemoteAddr(), err.Error())
-				// Don't break here - connection might be closed by client, but that's normal
+			// Send response back to client ONLY if it's not the master connection
+			if !isMasterConn {
+				_, err := conn.Write([]byte(response))
+				if err != nil {
+					fmt.Printf("Error writing response to connection %s: %s\n", conn.RemoteAddr(), err.Error())
+				} else {
+					fmt.Printf("Sent response to %s: %q\n", conn.RemoteAddr(), response)
+				}
 			} else {
-				fmt.Printf("Sent response to %s: %q\n", conn.RemoteAddr(), response)
+				fmt.Printf("Replica processed command %s silently\n", cmd.Type.String())
 			}
+
+			pos += nextPos
 		}
 	}
 }
@@ -170,7 +182,7 @@ func main() {
 		clientWg.Add(1) // We expect one eventReactor goroutine for this client
 		go listen(conn, clientChannel)
 		// Pass the per-client WaitGroup to its eventReactor
-		go eventReactor(clientChannel, conn, &clientWg)
+		go eventReactor(clientChannel, conn, &clientWg, false)
 
 		// The main goroutine does NOT wait here using clientWg.Wait().
 		// It loops back to accept the next client.

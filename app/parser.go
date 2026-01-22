@@ -137,35 +137,35 @@ func (p *RESPParser) getBulkStringLength(data []byte, startPos int, endPos int) 
 	return length, nil
 }
 
-func (p *RESPParser) Parse(data []byte) (*RedisCommand, error) {
+func (p *RESPParser) Parse(data []byte) (*RedisCommand, int, error) {
 	// For now, only handle Redis command arrays (*...)
 	if len(data) == 0 {
-		return nil, errors.New("empty data")
+		return nil, 0, nil
 	}
 
 	if data[0] != '*' {
-		return nil, errors.New("expected array for Redis command")
+		return nil, 0, errors.New("expected array for Redis command")
 	}
 
 	return p.parseArray(data)
 }
 
 // parseArray parses a Redis command array (*...)
-func (p *RESPParser) parseArray(data []byte) (*RedisCommand, error) {
+func (p *RESPParser) parseArray(data []byte) (*RedisCommand, int, error) {
 	// Parse array length: *<count>\r\n
 	lengthEndPos := p.findLengthEnd(data, 1)
 	if lengthEndPos == -1 {
-		return nil, errors.New("invalid array: no CRLF found after length")
+		return nil, 0, errors.New("invalid array: no CRLF found after length")
 	}
 
 	// Parse the array length
 	arrayLength, err := p.getBulkStringLength(data, 1, lengthEndPos)
 	if err != nil {
-		return nil, fmt.Errorf("invalid array length: %v", err)
+		return nil, 0, fmt.Errorf("invalid array length: %v", err)
 	}
 
 	if arrayLength <= 0 {
-		return nil, errors.New("array must have at least one element")
+		return nil, 0, errors.New("array must have at least one element")
 	}
 
 	// Parse each element (all should be bulk strings for Redis commands)
@@ -174,18 +174,18 @@ func (p *RESPParser) parseArray(data []byte) (*RedisCommand, error) {
 
 	for i := 0; i < arrayLength; i++ {
 		if pos >= len(data) {
-			return nil, errors.New("unexpected end of array data")
+			return nil, 0, errors.New("unexpected end of array data")
 		}
 
 		// Each element should be a bulk string starting with $
 		if data[pos] != '$' {
-			return nil, fmt.Errorf("expected bulk string at position %d, got %c", pos, data[pos])
+			return nil, 0, fmt.Errorf("expected bulk string at position %d, got %c", pos, data[pos])
 		}
 
 		// Parse the bulk string element
 		element, newPos, err := p.parseBulkStringElement(data, pos)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing array element %d: %v", i, err)
+			return nil, 0, fmt.Errorf("error parsing array element %d: %v", i, err)
 		}
 
 		elements[i] = element
@@ -194,14 +194,14 @@ func (p *RESPParser) parseArray(data []byte) (*RedisCommand, error) {
 
 	// Create the command - first element is command name, rest are args
 	if len(elements) == 0 {
-		return nil, errors.New("empty command array")
+		return nil, 0, errors.New("empty command array")
 	}
 
 	cmdType := ParseCommandType(elements[0])
 	return &RedisCommand{
 		Type: cmdType,
 		Args: elements[1:],
-	}, nil
+	}, pos, nil
 }
 
 // parseBulkStringElement parses a single bulk string and returns the value and new position

@@ -15,6 +15,9 @@ var (
 
 // RegisterReplica adds a new replica connection to the list of replicas
 func RegisterReplica(conn net.Conn) {
+	if conn == nil {
+		return
+	}
 	replicasMutex.Lock()
 	defer replicasMutex.Unlock()
 	replicas = append(replicas, conn)
@@ -80,6 +83,14 @@ func InitiateHandshake(config Config) error {
 		return fmt.Errorf("PSYNC failed: %w", err)
 	}
 	fmt.Println("Handshake: Received FULLRESYNC (ignored for now)")
+
+	// Start processing propagated commands from master
+	masterChannel := make(chan []byte)
+	var masterWg sync.WaitGroup
+	masterWg.Add(1)
+
+	go listen(conn, masterChannel)
+	go eventReactor(masterChannel, conn, &masterWg, true)
 
 	return nil
 }

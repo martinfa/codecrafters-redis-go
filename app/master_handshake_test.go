@@ -29,7 +29,7 @@ func TestMasterHandlesReplConf(t *testing.T) {
 			go listen(conn, clientChannel)
 			var wg sync.WaitGroup
 			wg.Add(1)
-			go eventReactor(clientChannel, conn, &wg)
+			go eventReactor(clientChannel, conn, &wg, false)
 		}
 	}()
 
