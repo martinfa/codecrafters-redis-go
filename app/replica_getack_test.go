@@ -16,8 +16,9 @@ func TestReplicaMasterConnection_ReplconfGetackFromMaster_YieldsAckWithOffsetZer
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(1)
 
+	processedReplicationCommandBytes := 0
 	go listen(replicaConnection, commandChannel)
-	go eventReactor(commandChannel, replicaConnection, &waitGroup, true)
+	go eventReactor(commandChannel, replicaConnection, &waitGroup, true, &processedReplicationCommandBytes)
 
 	masterGetackCommand := "*3\r\n$8\r\nreplconf\r\n$6\r\ngetack\r\n$1\r\n*\r\n"
 	if _, err := masterConnection.Write([]byte(masterGetackCommand)); err != nil {
@@ -33,7 +34,7 @@ func TestReplicaMasterConnection_ReplconfGetackFromMaster_YieldsAckWithOffsetZer
 		t.Fatalf("read ACK from replica: %v", err)
 	}
 	actualResponse := responseBuffer[:responseLength]
-	expectedResponse := []byte(replicaReplconfAcknowledgementOffsetZeroResponse)
+	expectedResponse := []byte(FormatReplicaReplconfAcknowledgementRESPArray(0))
 	if !bytes.Equal(actualResponse, expectedResponse) {
 		t.Fatalf("expected ACK %q, got %q", expectedResponse, actualResponse)
 	}

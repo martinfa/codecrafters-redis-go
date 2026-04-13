@@ -47,7 +47,7 @@ func ping_command(conn net.Conn) {
 	}
 }
 
-func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMasterConn bool) {
+func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMasterConn bool, masterReplicationProcessedCommandBytes *int) {
 	defer wg.Done()
 	for {
 		// Wait for data from the listen goroutine
@@ -76,8 +76,11 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 
 			fmt.Printf("Parsed command from %s: Type=%s, Args=%v\n", conn.RemoteAddr(), cmd.Type.String(), cmd.Args)
 
-			if isMasterConn && cmd.Type == CmdREPLCONF && len(cmd.Args) > 0 && strings.EqualFold(cmd.Args[0], "GETACK") {
-				_, writeError := conn.Write([]byte(replicaReplconfAcknowledgementOffsetZeroResponse))
+			commandByteLength := nextPos
+			if isMasterConn && masterReplicationProcessedCommandBytes != nil &&
+				cmd.Type == CmdREPLCONF && len(cmd.Args) > 0 && strings.EqualFold(cmd.Args[0], "GETACK") {
+				acknowledgementRESP := FormatReplicaReplconfAcknowledgementRESPArray(*masterReplicationProcessedCommandBytes)
+				_, writeError := conn.Write([]byte(acknowledgementRESP))
 				if writeError != nil {
 					fmt.Printf("Error writing REPLCONF ACK to master connection %s: %s\n", conn.RemoteAddr(), writeError.Error())
 				}
@@ -123,6 +126,10 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 				}
 			} else {
 				fmt.Printf("Replica processed command %s silently\n", cmd.Type.String())
+			}
+
+			if isMasterConn && masterReplicationProcessedCommandBytes != nil {
+				*masterReplicationProcessedCommandBytes += commandByteLength
 			}
 
 			pos += nextPos
@@ -190,7 +197,7 @@ func main() {
 		clientWg.Add(1) // We expect one eventReactor goroutine for this client
 		go listen(conn, clientChannel)
 		// Pass the per-client WaitGroup to its eventReactor
-		go eventReactor(clientChannel, conn, &clientWg, false)
+		go eventReactor(clientChannel, conn, &clientWg, false, nil)
 
 		// The main goroutine does NOT wait here using clientWg.Wait().
 		// It loops back to accept the next client.

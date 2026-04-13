@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// replicaReplconfAcknowledgementOffsetZeroResponse is the RESP array a replica sends after
-// REPLCONF GETACK (byte offset hardcoded to 0 for early Codecrafters stages).
-const replicaReplconfAcknowledgementOffsetZeroResponse = "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"
-
 var (
 	replicas      []net.Conn
 	replicasMutex sync.Mutex
@@ -103,9 +99,16 @@ func InitiateHandshake(config Config) error {
 	masterWg.Add(1)
 
 	go listenMasterReplicationConnection(conn, reader, masterChannel)
-	go eventReactor(masterChannel, conn, &masterWg, true)
+	processedReplicationCommandBytes := 0
+	go eventReactor(masterChannel, conn, &masterWg, true, &processedReplicationCommandBytes)
 
 	return nil
+}
+
+// FormatReplicaReplconfAcknowledgementRESPArray builds *3 REPLCONF ACK <offset> for the replication stream.
+func FormatReplicaReplconfAcknowledgementRESPArray(processedReplicationCommandByteOffset int) string {
+	offsetDigits := strconv.Itoa(processedReplicationCommandByteOffset)
+	return fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n%s\r\n", len(offsetDigits), offsetDigits)
 }
 
 // readReplicationHandshakeRDBSnapshot consumes $<n>\r\n followed by n bytes of RDB payload
