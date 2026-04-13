@@ -89,6 +89,15 @@ func TestParse_RedisCommands(t *testing.T) {
 			hasError: false,
 		},
 		{
+			name:  "REPLCONF GETACK from master uses lowercase command name",
+			input: "*3\r\n$8\r\nreplconf\r\n$6\r\ngetack\r\n$1\r\n*\r\n",
+			expected: &RedisCommand{
+				Type: CmdREPLCONF,
+				Args: []string{"getack", "*"},
+			},
+			hasError: false,
+		},
+		{
 			name:     "invalid - not an array",
 			input:    "$4\r\ntest\r\n",
 			expected: nil,

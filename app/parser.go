@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // CommandType represents different Redis command types
@@ -197,7 +198,7 @@ func (p *RESPParser) parseArray(data []byte) (*RedisCommand, int, error) {
 		return nil, 0, errors.New("empty command array")
 	}
 
-	cmdType := ParseCommandType(elements[0])
+	cmdType := ParseCommandType(strings.ToUpper(elements[0]))
 	return &RedisCommand{
 		Type: cmdType,
 		Args: elements[1:],

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -74,6 +75,13 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 			}
 
 			fmt.Printf("Parsed command from %s: Type=%s, Args=%v\n", conn.RemoteAddr(), cmd.Type.String(), cmd.Args)
+
+			if isMasterConn && cmd.Type == CmdREPLCONF && len(cmd.Args) > 0 && strings.EqualFold(cmd.Args[0], "GETACK") {
+				_, writeError := conn.Write([]byte(replicaReplconfAcknowledgementOffsetZeroResponse))
+				if writeError != nil {
+					fmt.Printf("Error writing REPLCONF ACK to master connection %s: %s\n", conn.RemoteAddr(), writeError.Error())
+				}
+			}
 
 			// Propagate write commands to replicas (only if we are master)
 			if cmd.Type.IsWrite() && !isMasterConn {

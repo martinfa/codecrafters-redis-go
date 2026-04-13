@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// replicaReplconfAcknowledgementOffsetZeroResponse is the RESP array a replica sends after
+// REPLCONF GETACK (byte offset hardcoded to 0 for early Codecrafters stages).
+const replicaReplconfAcknowledgementOffsetZeroResponse = "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"
+
 var (
 	replicas      []net.Conn
 	replicasMutex sync.Mutex
