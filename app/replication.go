@@ -3,7 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -88,15 +91,67 @@ func InitiateHandshake(config Config) error {
 	}
 	fmt.Println("Handshake: Received FULLRESYNC (ignored for now)")
 
-	// Start processing propagated commands from master
+	if err := readReplicationHandshakeRDBSnapshot(reader); err != nil {
+		return fmt.Errorf("read RDB snapshot from master: %w", err)
+	}
+
+	// Start processing propagated commands from master. Reads must use the same
+	// bufio.Reader as the handshake: otherwise RDB bytes buffered after +FULLRESYNC
+	// are invisible to conn.Read and the replication stream desynchronizes.
 	masterChannel := make(chan []byte)
 	var masterWg sync.WaitGroup
 	masterWg.Add(1)
 
-	go listen(conn, masterChannel)
+	go listenMasterReplicationConnection(conn, reader, masterChannel)
 	go eventReactor(masterChannel, conn, &masterWg, true)
 
 	return nil
+}
+
+// readReplicationHandshakeRDBSnapshot consumes $<n>\r\n followed by n bytes of RDB payload
+// that the master sends immediately after +FULLRESYNC.
+func readReplicationHandshakeRDBSnapshot(reader *bufio.Reader) error {
+	firstByte, err := reader.ReadByte()
+	if err != nil {
+		return fmt.Errorf("read before RDB bulk: %w", err)
+	}
+	if firstByte != '$' {
+		return fmt.Errorf("expected RDB bulk to start with '$', got %q", firstByte)
+	}
+	lengthLine, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("read RDB bulk length line: %w", err)
+	}
+	lengthLine = strings.TrimRight(lengthLine, "\r\n")
+	byteCount, err := strconv.Atoi(lengthLine)
+	if err != nil {
+		return fmt.Errorf("parse RDB bulk length %q: %w", lengthLine, err)
+	}
+	if _, err := io.CopyN(io.Discard, reader, int64(byteCount)); err != nil {
+		return fmt.Errorf("discard RDB bulk payload: %w", err)
+	}
+	return nil
+}
+
+func listenMasterReplicationConnection(connection net.Conn, bufferedReader *bufio.Reader, channel chan []byte) {
+	defer connection.Close()
+	defer close(channel)
+
+	readBuffer := make([]byte, 1024)
+	for {
+		bytesRead, readError := bufferedReader.Read(readBuffer)
+		if readError != nil {
+			if readError == io.EOF {
+				fmt.Printf("Client %s closed the connection.\n", connection.RemoteAddr())
+			} else {
+				fmt.Printf("Error reading from connection %s: %s\n", connection.RemoteAddr(), readError.Error())
+			}
+			break
+		}
+		dataRead := make([]byte, bytesRead)
+		copy(dataRead, readBuffer[:bytesRead])
+		channel <- dataRead
+	}
 }
 
 func sendCommand(conn net.Conn, reader *bufio.Reader, command string) error {

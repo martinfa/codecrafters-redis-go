@@ -2,11 +2,30 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"testing"
 	"time"
 )
+
+func TestReadReplicationHandshakeRDBSnapshot_DiscardsBulkPayload(t *testing.T) {
+	payload := []byte("hello-rdb")
+	input := append([]byte(fmt.Sprintf("$%d\r\n", len(payload))), payload...)
+	input = append(input, []byte("*1\r\n$4\r\nPING\r\n")...)
+	reader := bufio.NewReader(bytes.NewReader(input))
+	if err := readReplicationHandshakeRDBSnapshot(reader); err != nil {
+		t.Fatalf("readReplicationHandshakeRDBSnapshot: %v", err)
+	}
+	rest, err := reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("read after RDB: %v", err)
+	}
+	if string(rest) != "*1\r\n" {
+		t.Fatalf("expected next bytes to start stream after RDB, got %q", rest)
+	}
+}
 
 func TestInitiateHandshake_SendsPing(t *testing.T) {
 	// 1. Start a mock Master server
@@ -95,6 +114,16 @@ func TestInitiateHandshake_SendsPing(t *testing.T) {
 
 	// 12. Master responds with +FULLRESYNC ...
 	masterConn.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
+
+	// 13. Master sends RDB snapshot (same minimal empty RDB as HandlePsync)
+	rdbHex := "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000ff10aa32556141e212"
+	rdbBytes, hexDecodeError := hex.DecodeString(rdbHex)
+	if hexDecodeError != nil {
+		t.Fatalf("decode fixture RDB hex: %v", hexDecodeError)
+	}
+	if _, writeError := masterConn.Write([]byte(fmt.Sprintf("$%d\r\n%s", len(rdbBytes), string(rdbBytes)))); writeError != nil {
+		t.Fatalf("write RDB bulk to replica: %v", writeError)
+	}
 
 	// Clean up
 	select {
