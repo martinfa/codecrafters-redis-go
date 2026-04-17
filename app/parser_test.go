@@ -132,3 +132,10 @@ func TestParse_RedisCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCommandType_WAITReturnsKnownCommand(t *testing.T) {
+	commandType := ParseCommandType("WAIT")
+	if commandType != CmdWAIT {
+		t.Fatalf("expected WAIT to parse as CmdWAIT, got %v", commandType)
+	}
+}
