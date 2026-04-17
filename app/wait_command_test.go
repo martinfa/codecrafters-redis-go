@@ -9,13 +9,9 @@ import (
 )
 
 func TestHandleWait_WithConnectedReplicasReturnsReplicaCount(t *testing.T) {
-	replicasMutex.Lock()
-	replicas = nil
-	replicasMutex.Unlock()
+	resetReplicationStateForTest()
 	defer func() {
-		replicasMutex.Lock()
-		replicas = nil
-		replicasMutex.Unlock()
+		resetReplicationStateForTest()
 	}()
 
 	firstReplicaConnection, firstReplicaPeer := net.Pipe()
@@ -41,7 +37,92 @@ func TestHandleWait_WithConnectedReplicasReturnsReplicaCount(t *testing.T) {
 	}
 }
 
+func TestHandleWait_WithPendingWriteCommandsReturnsAcknowledgedReplicaCount(t *testing.T) {
+	resetReplicationStateForTest()
+	defer func() {
+		resetReplicationStateForTest()
+	}()
+
+	acknowledgingMasterConnection, acknowledgingReplicaConnection := net.Pipe()
+	acknowledgingMasterChannel := make(chan []byte)
+	acknowledgingReplicaChannel := make(chan []byte)
+	var acknowledgingMasterWaitGroup sync.WaitGroup
+	var acknowledgingReplicaWaitGroup sync.WaitGroup
+	acknowledgingMasterWaitGroup.Add(1)
+	acknowledgingReplicaWaitGroup.Add(1)
+
+	go listen(acknowledgingMasterConnection, acknowledgingMasterChannel)
+	go eventReactor(acknowledgingMasterChannel, acknowledgingMasterConnection, &acknowledgingMasterWaitGroup, false, nil)
+
+	processedReplicationCommandBytes := 0
+	go listen(acknowledgingReplicaConnection, acknowledgingReplicaChannel)
+	go eventReactor(acknowledgingReplicaChannel, acknowledgingReplicaConnection, &acknowledgingReplicaWaitGroup, true, &processedReplicationCommandBytes)
+
+	RegisterReplica(acknowledgingMasterConnection)
+
+	silentMasterConnection, silentReplicaConnection := net.Pipe()
+	silentMasterChannel := make(chan []byte)
+	var silentMasterWaitGroup sync.WaitGroup
+	silentMasterWaitGroup.Add(1)
+
+	go listen(silentMasterConnection, silentMasterChannel)
+	go eventReactor(silentMasterChannel, silentMasterConnection, &silentMasterWaitGroup, false, nil)
+	go func() {
+		defer silentReplicaConnection.Close()
+		_, _ = io.Copy(io.Discard, silentReplicaConnection)
+	}()
+
+	RegisterReplica(silentMasterConnection)
+
+	setCommand := "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\n123\r\n"
+	PropagateCommand([]byte(setCommand))
+
+	response := HandleWait(&RedisCommand{
+		Type: CmdWAIT,
+		Args: []string{"2", "50"},
+	})
+
+	if response != ":1\r\n" {
+		t.Fatalf("expected WAIT response %q, got %q", ":1\r\n", response)
+	}
+
+	if err := acknowledgingMasterConnection.Close(); err != nil {
+		t.Fatalf("close acknowledging master connection: %v", err)
+	}
+	if err := acknowledgingReplicaConnection.Close(); err != nil {
+		t.Fatalf("close acknowledging replica connection: %v", err)
+	}
+	if err := silentMasterConnection.Close(); err != nil {
+		t.Fatalf("close silent master connection: %v", err)
+	}
+
+	waitForEventReactor := func(waitGroup *sync.WaitGroup, description string) {
+		t.Helper()
+
+		waitFinished := make(chan struct{})
+		go func() {
+			waitGroup.Wait()
+			close(waitFinished)
+		}()
+
+		select {
+		case <-waitFinished:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for %s", description)
+		}
+	}
+
+	waitForEventReactor(&acknowledgingMasterWaitGroup, "acknowledging master eventReactor")
+	waitForEventReactor(&acknowledgingReplicaWaitGroup, "acknowledging replica eventReactor")
+	waitForEventReactor(&silentMasterWaitGroup, "silent master eventReactor")
+}
+
 func TestClientConnection_WAITWithZeroReplicasReturnsZeroImmediately(t *testing.T) {
+	resetReplicationStateForTest()
+	defer func() {
+		resetReplicationStateForTest()
+	}()
+
 	clientConnection, serverConnection := net.Pipe()
 	defer clientConnection.Close()
 

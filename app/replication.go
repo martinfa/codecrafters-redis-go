@@ -12,9 +12,15 @@ import (
 )
 
 var (
-	replicas      []net.Conn
-	replicasMutex sync.Mutex
+	replicas                []*ReplicaState
+	replicasMutex           sync.Mutex
+	masterReplicationOffset int
 )
+
+type ReplicaState struct {
+	connection             net.Conn
+	lastAcknowledgedOffset int
+}
 
 // RegisterReplica adds a new replica connection to the list of replicas
 func RegisterReplica(conn net.Conn) {
@@ -23,7 +29,12 @@ func RegisterReplica(conn net.Conn) {
 	}
 	replicasMutex.Lock()
 	defer replicasMutex.Unlock()
-	replicas = append(replicas, conn)
+
+	replicas = append(replicas, &ReplicaState{
+		connection:             conn,
+		lastAcknowledgedOffset: 0,
+	})
+
 	fmt.Printf("Registered new replica: %s. Total replicas: %d\n", conn.RemoteAddr(), len(replicas))
 }
 
@@ -35,20 +46,73 @@ func ReplicaCount() int {
 	return len(replicas)
 }
 
-// PropagateCommand sends a command to all registered replicas
-func PropagateCommand(command []byte) {
+func RecordPropagatedReplicationBytes(commandByteLength int) {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	masterReplicationOffset += commandByteLength
+}
+
+func CurrentMasterReplicationOffset() int {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	return masterReplicationOffset
+}
+
+func UpdateReplicaAcknowledgementOffset(conn net.Conn, acknowledgedOffset int) {
 	replicasMutex.Lock()
 	defer replicasMutex.Unlock()
 
 	for _, replica := range replicas {
-		_, err := replica.Write(command)
-		if err != nil {
-			fmt.Printf("Error propagating command to replica %s: %v\n", replica.RemoteAddr(), err)
-			// In a real implementation, we might want to remove the failed replica
-		} else {
-			fmt.Printf("Propagated command to replica %s: %q\n", replica.RemoteAddr(), string(command))
+		if replica.connection == conn {
+			replica.lastAcknowledgedOffset = acknowledgedOffset
+			return
 		}
 	}
+}
+
+func CountReplicasAcknowledgingOffset(targetReplicationOffset int) int {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	replicaCount := 0
+	for _, replica := range replicas {
+		if replica.lastAcknowledgedOffset >= targetReplicationOffset {
+			replicaCount++
+		}
+	}
+
+	return replicaCount
+}
+
+func ReplicaConnectionsSnapshot() []net.Conn {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	replicaConnections := make([]net.Conn, 0, len(replicas))
+	for _, replica := range replicas {
+		replicaConnections = append(replicaConnections, replica.connection)
+	}
+
+	return replicaConnections
+}
+
+// PropagateCommand sends a command to all registered replicas
+func PropagateCommand(command []byte) {
+	replicaConnections := ReplicaConnectionsSnapshot()
+
+	for _, replicaConnection := range replicaConnections {
+		_, err := replicaConnection.Write(command)
+		if err != nil {
+			fmt.Printf("Error propagating command to replica %s: %v\n", replicaConnection.RemoteAddr(), err)
+			// In a real implementation, we might want to remove the failed replica
+		} else {
+			fmt.Printf("Propagated command to replica %s: %q\n", replicaConnection.RemoteAddr(), string(command))
+		}
+	}
+
+	RecordPropagatedReplicationBytes(len(command))
 }
 
 // InitiateHandshake handles the replication handshake with the master server

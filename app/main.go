@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -86,9 +87,18 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 				}
 			}
 
+			if !isMasterConn && cmd.Type == CmdREPLCONF && len(cmd.Args) > 1 && strings.EqualFold(cmd.Args[0], "ACK") {
+				acknowledgedOffset, parseError := strconv.Atoi(cmd.Args[1])
+				if parseError == nil {
+					UpdateReplicaAcknowledgementOffset(conn, acknowledgedOffset)
+				}
+				pos += nextPos
+				continue
+			}
+
 			// Propagate write commands to replicas (only if we are master)
 			if cmd.Type.IsWrite() && !isMasterConn {
-				go PropagateCommand(buffer[pos : pos+nextPos])
+				PropagateCommand(buffer[pos : pos+nextPos])
 			}
 
 			// Handle different command types

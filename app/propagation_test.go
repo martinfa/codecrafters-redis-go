@@ -9,13 +9,9 @@ import (
 
 func TestCommandPropagation(t *testing.T) {
 	// 1. Reset replicas for the test
-	replicasMutex.Lock()
-	replicas = nil
-	replicasMutex.Unlock()
+	resetReplicationStateForTest()
 	defer func() {
-		replicasMutex.Lock()
-		replicas = nil
-		replicasMutex.Unlock()
+		resetReplicationStateForTest()
 	}()
 
 	// 2. Start a mock replica server
