@@ -12,6 +12,11 @@ func TestCommandPropagation(t *testing.T) {
 	replicasMutex.Lock()
 	replicas = nil
 	replicasMutex.Unlock()
+	defer func() {
+		replicasMutex.Lock()
+		replicas = nil
+		replicasMutex.Unlock()
+	}()
 
 	// 2. Start a mock replica server
 	replicaListener, err := net.Listen("tcp", "127.0.0.1:0")

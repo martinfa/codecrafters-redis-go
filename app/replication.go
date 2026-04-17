@@ -27,6 +27,14 @@ func RegisterReplica(conn net.Conn) {
 	fmt.Printf("Registered new replica: %s. Total replicas: %d\n", conn.RemoteAddr(), len(replicas))
 }
 
+// ReplicaCount returns the number of registered replicas.
+func ReplicaCount() int {
+	replicasMutex.Lock()
+	defer replicasMutex.Unlock()
+
+	return len(replicas)
+}
+
 // PropagateCommand sends a command to all registered replicas
 func PropagateCommand(command []byte) {
 	replicasMutex.Lock()

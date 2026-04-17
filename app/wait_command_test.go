@@ -8,6 +8,39 @@ import (
 	"time"
 )
 
+func TestHandleWait_WithConnectedReplicasReturnsReplicaCount(t *testing.T) {
+	replicasMutex.Lock()
+	replicas = nil
+	replicasMutex.Unlock()
+	defer func() {
+		replicasMutex.Lock()
+		replicas = nil
+		replicasMutex.Unlock()
+	}()
+
+	firstReplicaConnection, firstReplicaPeer := net.Pipe()
+	defer firstReplicaConnection.Close()
+	defer firstReplicaPeer.Close()
+
+	secondReplicaConnection, secondReplicaPeer := net.Pipe()
+	defer secondReplicaConnection.Close()
+	defer secondReplicaPeer.Close()
+
+	RegisterReplica(firstReplicaConnection)
+	RegisterReplica(secondReplicaConnection)
+
+	command := &RedisCommand{
+		Type: CmdWAIT,
+		Args: []string{"9", "500"},
+	}
+
+	response := HandleWait(command)
+
+	if response != ":2\r\n" {
+		t.Fatalf("expected WAIT response %q, got %q", ":2\r\n", response)
+	}
+}
+
 func TestClientConnection_WAITWithZeroReplicasReturnsZeroImmediately(t *testing.T) {
 	clientConnection, serverConnection := net.Pipe()
 	defer clientConnection.Close()

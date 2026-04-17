@@ -19,6 +19,5 @@ func HandleWait(command *RedisCommand) string {
 		return fmt.Sprintf("-ERR invalid timeout value %q\r\n", command.Args[1])
 	}
 
-	// This phase only requires the immediate response path.
-	return ":0\r\n"
+	return fmt.Sprintf(":%d\r\n", ReplicaCount())
 }
