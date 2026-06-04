@@ -124,6 +124,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 				response = HandlePsync(cmd, conn)
 			case CmdWAIT:
 				response = HandleWait(cmd)
+			case CmdTYPE:
+				response = HandleType(cmd)
 			default:
 				response = "-ERR unknown command\r\n"
 			}

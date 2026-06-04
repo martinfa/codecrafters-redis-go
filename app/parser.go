@@ -21,6 +21,7 @@ const (
 	CmdREPLCONF
 	CmdPSYNC
 	CmdWAIT
+	CmdTYPE
 )
 
 // IsWrite returns true if the command is a write command
@@ -56,6 +57,8 @@ func (c CommandType) String() string {
 		return "PSYNC"
 	case CmdWAIT:
 		return "WAIT"
+	case CmdTYPE:
+		return "TYPE"
 	default:
 		return "UNKNOWN"
 	}
@@ -84,6 +87,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdPSYNC
 	case "WAIT":
 		return CmdWAIT
+	case "TYPE":
+		return CmdTYPE
 	default:
 		return CmdUnknown
 	}
