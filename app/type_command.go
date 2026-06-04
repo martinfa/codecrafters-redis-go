@@ -11,5 +11,9 @@ func HandleType(command *RedisCommand) string {
 		return "+none\r\n"
 	}
 
+	if _, isStream := value.(*Stream); isStream {
+		return "+stream\r\n"
+	}
+
 	return "+string\r\n"
 }

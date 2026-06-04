@@ -41,6 +41,17 @@ func TestHandleType(t *testing.T) {
 			expected: "-ERR wrong number of arguments for 'type' command\r\n",
 		},
 		{
+			name: "type for existing stream key",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "0-1", map[string]string{"foo": "bar"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdTYPE,
+				Args: []string{"stream_key"},
+			},
+			expected: "+stream\r\n",
+		},
+		{
 			name: "type with too many arguments",
 			setup: func() {
 			},
