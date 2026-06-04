@@ -10,12 +10,14 @@ func HandleXadd(command *RedisCommand) string {
 	streamKey := command.Args[0]
 	entryID := command.Args[1]
 
+	cache := GetInstance()
+	stream := cache.GetStream(streamKey)
+	entryID = resolveStreamEntryID(stream, entryID)
+
 	if entryID == zeroEntryID {
 		return errXaddIDMustBeGreaterThanZeroZero
 	}
 
-	cache := GetInstance()
-	stream := cache.GetStream(streamKey)
 	if !entryIDGreaterThan(entryID, lastStreamEntryID(stream)) {
 		return errXaddIDEqualOrSmallerThanTop
 	}

@@ -106,6 +106,50 @@ func TestHandleXadd(t *testing.T) {
 			},
 			expected: errXaddIDEqualOrSmallerThanTop,
 		},
+		{
+			name: "xadd auto generates sequence for 0-* on empty stream",
+			setup: func() {
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "0-*", "foo", "bar"},
+			},
+			expected: "$3\r\n0-1\r\n",
+		},
+		{
+			name: "xadd auto generates first sequence for new milliseconds",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "0-1", map[string]string{"foo": "bar"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "5-*", "foo", "bar"},
+			},
+			expected: "$3\r\n5-0\r\n",
+		},
+		{
+			name: "xadd auto generates incremented sequence for same milliseconds",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "5-0", map[string]string{"foo": "bar"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "5-*", "bar", "baz"},
+			},
+			expected: "$3\r\n5-1\r\n",
+		},
+		{
+			name: "xadd auto generates incremented sequence for same milliseconds after other time parts",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "1-0", map[string]string{"a": "1"})
+				GetInstance().AddStreamEntry("stream_key", "1-5", map[string]string{"b": "2"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "1-*", "c", "3"},
+			},
+			expected: "$3\r\n1-6\r\n",
+		},
 	}
 
 	for _, tt := range tests {

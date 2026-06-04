@@ -28,6 +28,61 @@ func TestEntryIDGreaterThan(t *testing.T) {
 	}
 }
 
+func TestNextSequenceNumberForMilliseconds(t *testing.T) {
+	tests := []struct {
+		name         string
+		stream       *Stream
+		milliseconds int64
+		expected     int64
+	}{
+		{name: "empty stream milliseconds zero", stream: nil, milliseconds: 0, expected: 1},
+		{name: "empty stream non zero milliseconds", stream: &Stream{}, milliseconds: 5, expected: 0},
+		{
+			name: "increments max sequence for milliseconds",
+			stream: &Stream{Entries: []StreamEntry{
+				{ID: "5-0", Fields: map[string]string{}},
+				{ID: "1-9", Fields: map[string]string{}},
+			}},
+			milliseconds: 5,
+			expected:     1,
+		},
+		{
+			name: "milliseconds zero after existing zero entries",
+			stream: &Stream{Entries: []StreamEntry{
+				{ID: "0-1", Fields: map[string]string{}},
+				{ID: "0-3", Fields: map[string]string{}},
+			}},
+			milliseconds: 0,
+			expected:     4,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := nextSequenceNumberForMilliseconds(testCase.stream, testCase.milliseconds)
+			if result != testCase.expected {
+				t.Errorf("nextSequenceNumberForMilliseconds() = %d, expected %d", result, testCase.expected)
+			}
+		})
+	}
+}
+
+func TestResolveStreamEntryID(t *testing.T) {
+	stream := &Stream{Entries: []StreamEntry{{ID: "5-0", Fields: map[string]string{}}}}
+
+	if resolveStreamEntryID(stream, "1-2") != "1-2" {
+		t.Errorf("expected explicit id to pass through unchanged")
+	}
+
+	if resolveStreamEntryID(stream, "5-*") != "5-1" {
+		t.Errorf("expected 5-1, got %q", resolveStreamEntryID(stream, "5-*"))
+	}
+
+	if resolveStreamEntryID(nil, "0-*") != "0-1" {
+		t.Errorf("expected 0-1, got %q", resolveStreamEntryID(nil, "0-*"))
+	}
+}
+
 func TestLastStreamEntryID(t *testing.T) {
 	if lastStreamEntryID(nil) != zeroEntryID {
 		t.Errorf("expected %q for nil stream, got %q", zeroEntryID, lastStreamEntryID(nil))
