@@ -50,6 +50,62 @@ func TestHandleXadd(t *testing.T) {
 			},
 			expected: "-ERR wrong number of arguments for 'xadd' command\r\n",
 		},
+		{
+			name: "xadd rejects id equal to last entry",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-2", map[string]string{"bar": "baz"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "1-2", "baz", "foo"},
+			},
+			expected: errXaddIDEqualOrSmallerThanTop,
+		},
+		{
+			name: "xadd rejects id with lower milliseconds than last entry",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-2", map[string]string{"bar": "baz"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "0-3", "baz", "foo"},
+			},
+			expected: errXaddIDEqualOrSmallerThanTop,
+		},
+		{
+			name: "xadd rejects 0-0 on empty stream",
+			setup: func() {
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "0-0", "baz", "foo"},
+			},
+			expected: errXaddIDMustBeGreaterThanZeroZero,
+		},
+		{
+			name: "xadd rejects 0-0 when stream has entries",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "0-0", "baz", "foo"},
+			},
+			expected: errXaddIDMustBeGreaterThanZeroZero,
+		},
+		{
+			name: "xadd rejects duplicate id on single entry stream",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "1-1", "bar", "baz"},
+			},
+			expected: errXaddIDEqualOrSmallerThanTop,
+		},
 	}
 
 	for _, tt := range tests {
