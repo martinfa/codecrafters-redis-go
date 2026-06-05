@@ -23,6 +23,7 @@ const (
 	CmdWAIT
 	CmdTYPE
 	CmdXADD
+	CmdXRANGE
 )
 
 // IsWrite returns true if the command is a write command
@@ -62,6 +63,8 @@ func (c CommandType) String() string {
 		return "TYPE"
 	case CmdXADD:
 		return "XADD"
+	case CmdXRANGE:
+		return "XRANGE"
 	default:
 		return "UNKNOWN"
 	}
@@ -94,6 +97,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdTYPE
 	case "XADD":
 		return CmdXADD
+	case "XRANGE":
+		return CmdXRANGE
 	default:
 		return CmdUnknown
 	}

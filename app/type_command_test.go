@@ -43,7 +43,7 @@ func TestHandleType(t *testing.T) {
 		{
 			name: "type for existing stream key",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "0-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "0-1", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdTYPE,

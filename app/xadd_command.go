@@ -22,12 +22,12 @@ func HandleXadd(command *RedisCommand) string {
 		return errXaddIDEqualOrSmallerThanTop
 	}
 
-	fields := make(map[string]string)
+	fieldValues := make([]string, 0, len(command.Args)-2)
 	for index := 2; index < len(command.Args); index += 2 {
-		fields[command.Args[index]] = command.Args[index+1]
+		fieldValues = append(fieldValues, command.Args[index], command.Args[index+1])
 	}
 
-	cache.AddStreamEntry(streamKey, entryID, fields)
+	cache.AddStreamEntry(streamKey, entryID, fieldValues)
 
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(entryID), entryID)
 }

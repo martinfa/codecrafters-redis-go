@@ -22,7 +22,7 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd appends to existing stream",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "0-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "0-1", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -53,8 +53,8 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd rejects id equal to last entry",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
-				GetInstance().AddStreamEntry("stream_key", "1-2", map[string]string{"bar": "baz"})
+				GetInstance().AddStreamEntry("stream_key", "1-1", []string{"foo", "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-2", []string{"bar", "baz"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -65,8 +65,8 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd rejects id with lower milliseconds than last entry",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
-				GetInstance().AddStreamEntry("stream_key", "1-2", map[string]string{"bar": "baz"})
+				GetInstance().AddStreamEntry("stream_key", "1-1", []string{"foo", "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-2", []string{"bar", "baz"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -87,7 +87,7 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd rejects 0-0 when stream has entries",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-1", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -98,7 +98,7 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd rejects duplicate id on single entry stream",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "1-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "1-1", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -119,7 +119,7 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd auto generates first sequence for new milliseconds",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "0-1", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "0-1", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -130,7 +130,7 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd auto generates incremented sequence for same milliseconds",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "5-0", map[string]string{"foo": "bar"})
+				GetInstance().AddStreamEntry("stream_key", "5-0", []string{"foo", "bar"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
@@ -141,8 +141,8 @@ func TestHandleXadd(t *testing.T) {
 		{
 			name: "xadd auto generates incremented sequence for same milliseconds after other time parts",
 			setup: func() {
-				GetInstance().AddStreamEntry("stream_key", "1-0", map[string]string{"a": "1"})
-				GetInstance().AddStreamEntry("stream_key", "1-5", map[string]string{"b": "2"})
+				GetInstance().AddStreamEntry("stream_key", "1-0", []string{"a", "1"})
+				GetInstance().AddStreamEntry("stream_key", "1-5", []string{"b", "2"})
 			},
 			cmd: &RedisCommand{
 				Type: CmdXADD,
