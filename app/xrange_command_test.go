@@ -37,6 +37,13 @@ func TestParseXrangeCommandArguments(t *testing.T) {
 			expectedEndID:     "1526985054079-0",
 		},
 		{
+			name:              "parses plus as end id",
+			args:              []string{"stream_key", "0-2", "+"},
+			expectedStreamKey: "stream_key",
+			expectedStartID:   "0-2",
+			expectedEndID:     "+",
+		},
+		{
 			name:          "rejects no arguments",
 			args:          []string{},
 			expectedError: "-ERR wrong number of arguments for 'xrange' command\r\n",
@@ -170,6 +177,52 @@ func TestHandleXrange(t *testing.T) {
 			expected: formatExpectedXrangeResponse(
 				formatExpectedXrangeEntryResponse("0-2", "bar", "baz"),
 				formatExpectedXrangeEntryResponse("0-3", "baz", "foo"),
+			),
+		},
+		{
+			name: "codecrafters plus stage returns entries from start id through end of stream",
+			setup: func() {
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"stream_key", "0-1", "foo", "bar"},
+				})
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"stream_key", "0-2", "bar", "baz"},
+				})
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"stream_key", "0-3", "baz", "foo"},
+				})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXRANGE,
+				Args: []string{"stream_key", "0-2", "+"},
+			},
+			expected: formatExpectedXrangeResponse(
+				formatExpectedXrangeEntryResponse("0-2", "bar", "baz"),
+				formatExpectedXrangeEntryResponse("0-3", "baz", "foo"),
+			),
+		},
+		{
+			name: "plus end id returns all entries from millisecond-only start through stream end",
+			setup: func() {
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"some_key", "1526985054069-0", "temperature", "36", "humidity", "95"},
+				})
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"some_key", "1526985054079-0", "temperature", "37", "humidity", "94"},
+				})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXRANGE,
+				Args: []string{"some_key", "1526985054069", "+"},
+			},
+			expected: formatExpectedXrangeResponse(
+				formatExpectedXrangeEntryResponse("1526985054069-0", "temperature", "36", "humidity", "95"),
+				formatExpectedXrangeEntryResponse("1526985054079-0", "temperature", "37", "humidity", "94"),
 			),
 		},
 		{

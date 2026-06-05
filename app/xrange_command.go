@@ -60,12 +60,13 @@ func HandleXrange(command *RedisCommand) string {
 		return "*0\r\n"
 	}
 
-	endBoundID, err := normalizeRangeBoundID(endID, endSequenceNumberDefault)
+	stream := GetInstance().GetStream(streamKey)
+
+	endBoundID, err := resolveXrangeEndBoundID(stream, endID)
 	if err != nil {
 		return "*0\r\n"
 	}
 
-	stream := GetInstance().GetStream(streamKey)
 	xrangeResponse := buildXrangeResponse(stream, startBoundID, endBoundID)
 
 	return encodeXrangeResponse(xrangeResponse)
