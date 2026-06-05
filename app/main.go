@@ -130,6 +130,8 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 				response = HandleXadd(cmd)
 			case CmdXRANGE:
 				response = HandleXrange(cmd)
+			case CmdXREAD:
+				response = HandleXread(cmd)
 			default:
 				response = "-ERR unknown command\r\n"
 			}

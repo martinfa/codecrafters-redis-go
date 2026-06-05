@@ -34,6 +34,23 @@ type XrangeResponse struct {
 	Entries []XrangeEntryResponse
 }
 
+// XreadEntryResponse is one XREAD result entry: ID plus ordered field/value bulk strings.
+type XreadEntryResponse struct {
+	EntryID     string
+	FieldValues []string
+}
+
+// XreadStreamResponse is one stream block in an XREAD result.
+type XreadStreamResponse struct {
+	StreamKey string
+	Entries   []XreadEntryResponse
+}
+
+// XreadResponse is the full XREAD result: an array of streams.
+type XreadResponse struct {
+	Streams []XreadStreamResponse
+}
+
 type Stream struct {
 	Entries []StreamEntry
 }
@@ -159,6 +176,10 @@ func entryIDInInclusiveRange(entryID string, startBoundID string, endBoundID str
 	}
 
 	return true
+}
+
+func entryIDAfterExclusiveStart(entryID string, startBoundID string) bool {
+	return entryIDGreaterThan(entryID, startBoundID)
 }
 
 func entryIDGreaterThan(leftEntryID string, rightEntryID string) bool {
