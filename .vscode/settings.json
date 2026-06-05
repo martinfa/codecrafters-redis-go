@@ -1,0 +1,11 @@
+{
+  "go.testFlags": ["-v"],
+  "go.testTimeout": "30s",
+  "go.buildOnSave": "off",
+  "go.enableCodeLens": {
+    "runtest": true
+  },
+  "go.alternateTools": {
+    "dlv": "${env:HOME}/go/bin/dlv"
+  }
+}

@@ -150,10 +150,28 @@ func TestHandleXadd(t *testing.T) {
 			},
 			expected: "$3\r\n1-6\r\n",
 		},
+		{
+			name: "xadd auto generates sequence for * on empty stream",
+			setup: func() {
+				CurrentTimeMilliseconds = func() int64 {
+					return 1526919030474
+				}
+			},
+			cmd: &RedisCommand{
+				Type: CmdXADD,
+				Args: []string{"stream_key", "*", "foo", "bar"},
+			},
+			expected: "$15\r\n1526919030474-0\r\n",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			originalCurrentTimeMilliseconds := CurrentTimeMilliseconds
+			t.Cleanup(func() {
+				CurrentTimeMilliseconds = originalCurrentTimeMilliseconds
+			})
+
 			GetInstance().cache = make(map[string]CacheItem)
 
 			if tt.setup != nil {
