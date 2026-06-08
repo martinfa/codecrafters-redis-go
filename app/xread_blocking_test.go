@@ -97,6 +97,45 @@ func TestHandleBlockingXreadWaitsForStreamChange(t *testing.T) {
 	}
 }
 
+func TestHandleBlockingXreadWithZeroBlockWaitsIndefinitely(t *testing.T) {
+	resetXreadTestState(t)
+
+	HandleXadd(&RedisCommand{
+		Type: CmdXADD,
+		Args: []string{"stream_key", "0-1", "temperature", "96"},
+	})
+
+	resultChannel := make(chan string, 1)
+	go func() {
+		resultChannel <- HandleXread(&RedisCommand{
+			Type: CmdXREAD,
+			Args: []string{"BLOCK", "0", "STREAMS", "stream_key", "0-1"},
+		})
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	HandleXadd(&RedisCommand{
+		Type: CmdXADD,
+		Args: []string{"stream_key", "0-2", "temperature", "95"},
+	})
+
+	select {
+	case result := <-resultChannel:
+		expected := formatExpectedXreadResponse(
+			formatExpectedXreadStreamResponse(
+				"stream_key",
+				formatExpectedXreadEntryResponse("0-2", "temperature", "95"),
+			),
+		)
+		if result != expected {
+			t.Errorf("HandleXread() = %q, expected %q", result, expected)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for indefinite blocking XREAD response")
+	}
+}
+
 func TestHandleBlockingXreadReturnsNullArrayOnTimeout(t *testing.T) {
 	resetXreadTestState(t)
 

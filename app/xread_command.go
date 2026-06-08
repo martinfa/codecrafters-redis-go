@@ -173,24 +173,35 @@ func waitForBlockingXreadResponse(streamKeys []string, startIDs []string, blockM
 		}
 	}()
 
-	timer := time.NewTimer(time.Duration(blockMilliseconds) * time.Millisecond)
-	defer timer.Stop()
+	var selectCases []reflect.SelectCase
+	if blockMilliseconds > 0 {
+		timer := time.NewTimer(time.Duration(blockMilliseconds) * time.Millisecond)
+		defer timer.Stop()
 
-	selectCases := make([]reflect.SelectCase, len(subscriptions)+1)
-	selectCases[0] = reflect.SelectCase{
-		Dir:  reflect.SelectRecv,
-		Chan: reflect.ValueOf(timer.C),
-	}
-	for index, subscription := range subscriptions {
-		selectCases[index+1] = reflect.SelectCase{
+		selectCases = make([]reflect.SelectCase, len(subscriptions)+1)
+		selectCases[0] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(subscription.Notifications),
+			Chan: reflect.ValueOf(timer.C),
+		}
+		for index, subscription := range subscriptions {
+			selectCases[index+1] = reflect.SelectCase{
+				Dir:  reflect.SelectRecv,
+				Chan: reflect.ValueOf(subscription.Notifications),
+			}
+		}
+	} else {
+		selectCases = make([]reflect.SelectCase, len(subscriptions))
+		for index, subscription := range subscriptions {
+			selectCases[index] = reflect.SelectCase{
+				Dir:  reflect.SelectRecv,
+				Chan: reflect.ValueOf(subscription.Notifications),
+			}
 		}
 	}
 
 	for {
 		chosen, _, _ := reflect.Select(selectCases)
-		if chosen == 0 {
+		if blockMilliseconds > 0 && chosen == 0 {
 			return blockingXreadTimeoutResponse
 		}
 
