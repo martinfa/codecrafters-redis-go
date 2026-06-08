@@ -29,5 +29,10 @@ func HandleXadd(command *RedisCommand) string {
 
 	cache.AddStreamEntry(streamKey, entryID, fieldValues)
 
+	GetEventBus().Publish(Event{
+		Topic:     EventStreamChanged,
+		StreamKey: streamKey,
+	})
+
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(entryID), entryID)
 }
