@@ -87,6 +87,21 @@ func parseManyXReadCommandArguments(command *RedisCommand) (streamKeys []string,
 	return streamKeys, startIds, ""
 }
 
+func resolveXreadStartIDs(streamKeys []string, startIDs []string) []string {
+	resolvedStartIDs := make([]string, len(startIDs))
+	for index, startID := range startIDs {
+		if startID == xreadNewEntriesSentinel {
+			stream := GetInstance().GetStream(streamKeys[index])
+			resolvedStartIDs[index] = lastStreamEntryID(stream)
+			continue
+		}
+
+		resolvedStartIDs[index] = startID
+	}
+
+	return resolvedStartIDs
+}
+
 func buildXreadResponse(streamKey string, startID string) XreadResponse {
 	startBoundID, err := normalizeRangeBoundID(startID, startSequenceNumberDefault)
 	if err != nil {
@@ -217,6 +232,8 @@ func HandleXread(command *RedisCommand) string {
 	if errorResponse != "" {
 		return errorResponse
 	}
+
+	startIDs = resolveXreadStartIDs(streamKeys, startIDs)
 
 	if blockMilliseconds >= 0 {
 		return waitForBlockingXreadResponse(streamKeys, startIDs, blockMilliseconds)
