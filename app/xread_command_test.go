@@ -227,3 +227,102 @@ func TestHandleXread(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleXreadMultipleStreams(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func()
+		cmd      *RedisCommand
+		expected string
+	}{
+		{
+			name: "codecrafters stage returns multiple streams in command order",
+			setup: func() {
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"stream_key", "0-1", "temperature", "95"},
+				})
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"other_stream_key", "0-2", "humidity", "97"},
+				})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXREAD,
+				Args: []string{"streams", "stream_key", "other_stream_key", "0-0", "0-1"},
+			},
+			expected: formatExpectedXreadResponse(
+				formatExpectedXreadStreamResponse(
+					"stream_key",
+					formatExpectedXreadEntryResponse("0-1", "temperature", "95"),
+				),
+				formatExpectedXreadStreamResponse(
+					"other_stream_key",
+					formatExpectedXreadEntryResponse("0-2", "humidity", "97"),
+				),
+			),
+		},
+		{
+			name: "returns streams in the same order as the command keys",
+			setup: func() {
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"first_stream", "0-1", "foo", "bar"},
+				})
+				HandleXadd(&RedisCommand{
+					Type: CmdXADD,
+					Args: []string{"second_stream", "0-1", "bar", "baz"},
+				})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXREAD,
+				Args: []string{"STREAMS", "second_stream", "first_stream", "0-0", "0-0"},
+			},
+			expected: formatExpectedXreadResponse(
+				formatExpectedXreadStreamResponse(
+					"second_stream",
+					formatExpectedXreadEntryResponse("0-1", "bar", "baz"),
+				),
+				formatExpectedXreadStreamResponse(
+					"first_stream",
+					formatExpectedXreadEntryResponse("0-1", "foo", "bar"),
+				),
+			),
+		},
+		{
+			name: "returns empty array when no stream has entries after start id",
+			setup: func() {
+				GetInstance().AddStreamEntry("stream_key", "0-1", []string{"temperature", "95"})
+				GetInstance().AddStreamEntry("other_stream_key", "0-2", []string{"humidity", "97"})
+			},
+			cmd: &RedisCommand{
+				Type: CmdXREAD,
+				Args: []string{"STREAMS", "stream_key", "other_stream_key", "0-1", "0-2"},
+			},
+			expected: "*0\r\n",
+		},
+		{
+			name: "rejects mismatched stream and id counts",
+			cmd: &RedisCommand{
+				Type: CmdXREAD,
+				Args: []string{"STREAMS", "stream_key", "other_stream_key", "0-0"},
+			},
+			expected: "-ERR wrong number of arguments for 'xread' command\r\n",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			GetInstance().cache = make(map[string]CacheItem)
+
+			if testCase.setup != nil {
+				testCase.setup()
+			}
+
+			result := HandleXread(testCase.cmd)
+			if result != testCase.expected {
+				t.Errorf("HandleXread() = %q, expected %q", result, testCase.expected)
+			}
+		})
+	}
+}
