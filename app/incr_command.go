@@ -21,7 +21,11 @@ func HandleIncr(command *RedisCommand) string {
 
 	cache := GetInstance()
 	value := cache.Get(key)
-	valueString := value.(string)
+
+	valueString := "0"
+	if value != nil {
+		valueString = value.(string)
+	}
 
 	currentValue, parseError := strconv.Atoi(valueString)
 	if parseError != nil {

@@ -71,7 +71,11 @@ func (c *Cache) Get(key string) interface{} {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	item := c.cache[key]
+	item, ok := c.cache[key]
+	if !ok {
+		return nil
+	}
+
 	fmt.Println("item", item)
 	now := time.Now().UnixMilli()
 	fmt.Println("now", now, "expiration", item.Expiration, "now >= exp?", now >= item.Expiration)

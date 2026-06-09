@@ -92,6 +92,45 @@ func TestHandleIncrIncrementsValueOnRepeatedCalls(t *testing.T) {
 	}
 }
 
+func TestHandleIncrSetsMissingKeyToOne(t *testing.T) {
+	resetIncrTestState(t)
+
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{
+			name: "codecrafters stage sets foo to 1 when key is missing",
+			key:  "foo",
+		},
+		{
+			name: "codecrafters stage sets bar to 1 when key is missing",
+			key:  "bar",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := HandleIncr(&RedisCommand{
+				Type: CmdINCR,
+				Args: []string{testCase.key},
+			})
+
+			if result != ":1\r\n" {
+				t.Errorf("HandleIncr() = %q, expected %q", result, ":1\r\n")
+			}
+
+			getResult := HandleGet(&RedisCommand{
+				Type: CmdGET,
+				Args: []string{testCase.key},
+			})
+			if getResult != "$1\r\n1\r\n" {
+				t.Errorf("HandleGet() = %q, expected %q", getResult, "$1\r\n1\r\n")
+			}
+		})
+	}
+}
+
 func TestHandleIncrArgumentParsing(t *testing.T) {
 	resetIncrTestState(t)
 
