@@ -268,3 +268,116 @@ func TestHandleExecArgumentParsing(t *testing.T) {
 		t.Errorf("HandleExec() = %q, expected %q", result, "-ERR wrong number of arguments for 'exec' command\r\n")
 	}
 }
+
+func TestParseDiscardCommandArguments(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedError string
+	}{
+		{
+			name: "accepts no arguments",
+			args: []string{},
+		},
+		{
+			name:          "rejects extra arguments",
+			args:          []string{"extra"},
+			expectedError: "-ERR wrong number of arguments for 'discard' command\r\n",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			errorResponse := parseDiscardCommandArguments(&RedisCommand{
+				Type: CmdDISCARD,
+				Args: testCase.args,
+			})
+
+			if errorResponse != testCase.expectedError {
+				t.Errorf("parseDiscardCommandArguments() error = %q, expected %q", errorResponse, testCase.expectedError)
+			}
+		})
+	}
+}
+
+func TestHandleDiscardAbortsQueuedTransaction(t *testing.T) {
+	resetTransactionTestState(t)
+
+	transactionConnection := testConnection(t)
+
+	multiResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdMULTI,
+		Args: []string{},
+	})
+	if multiResult != "+OK\r\n" {
+		t.Fatalf("HandleConnectionCommand(MULTI) = %q, expected %q", multiResult, "+OK\r\n")
+	}
+
+	setResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdSET,
+		Args: []string{"foo", "41"},
+	})
+	if setResult != queuedCommandResponse {
+		t.Fatalf("HandleConnectionCommand(SET) = %q, expected %q", setResult, queuedCommandResponse)
+	}
+
+	incrResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdINCR,
+		Args: []string{"foo"},
+	})
+	if incrResult != queuedCommandResponse {
+		t.Fatalf("HandleConnectionCommand(INCR) = %q, expected %q", incrResult, queuedCommandResponse)
+	}
+
+	discardResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdDISCARD,
+		Args: []string{},
+	})
+	if discardResult != "+OK\r\n" {
+		t.Errorf("HandleConnectionCommand(DISCARD) = %q, expected %q", discardResult, "+OK\r\n")
+	}
+
+	getResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdGET,
+		Args: []string{"foo"},
+	})
+	if getResult != "$-1\r\n" {
+		t.Errorf("HandleConnectionCommand(GET foo) = %q, expected %q", getResult, "$-1\r\n")
+	}
+
+	secondDiscardResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdDISCARD,
+		Args: []string{},
+	})
+	if secondDiscardResult != errDiscardWithoutMulti {
+		t.Errorf("second HandleConnectionCommand(DISCARD) = %q, expected %q", secondDiscardResult, errDiscardWithoutMulti)
+	}
+}
+
+func TestHandleDiscardWithoutMultiReturnsError(t *testing.T) {
+	resetTransactionTestState(t)
+	connection := testConnection(t)
+
+	result := HandleDiscard(connection, &RedisCommand{
+		Type: CmdDISCARD,
+		Args: []string{},
+	})
+
+	if result != errDiscardWithoutMulti {
+		t.Errorf("HandleDiscard() = %q, expected %q", result, errDiscardWithoutMulti)
+	}
+}
+
+func TestHandleDiscardArgumentParsing(t *testing.T) {
+	resetTransactionTestState(t)
+	connection := testConnection(t)
+
+	result := HandleDiscard(connection, &RedisCommand{
+		Type: CmdDISCARD,
+		Args: []string{"extra"},
+	})
+
+	if result != "-ERR wrong number of arguments for 'discard' command\r\n" {
+		t.Errorf("HandleDiscard() = %q, expected %q", result, "-ERR wrong number of arguments for 'discard' command\r\n")
+	}
+}

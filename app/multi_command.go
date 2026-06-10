@@ -8,6 +8,7 @@ import (
 )
 
 const errExecWithoutMulti = "-ERR EXEC without MULTI\r\n"
+const errDiscardWithoutMulti = "-ERR DISCARD without MULTI\r\n"
 const errExecWithoutQueuedCommands = "*0\r\n"
 const queuedCommandResponse = "+QUEUED\r\n"
 
@@ -49,7 +50,7 @@ func RemoveConnectionTransactionState(connection net.Conn) {
 }
 
 func ShouldQueueCommandDuringTransaction(connection net.Conn, command *RedisCommand) bool {
-	if command.Type == CmdMULTI || command.Type == CmdEXEC {
+	if command.Type == CmdMULTI || command.Type == CmdEXEC || command.Type == CmdDISCARD {
 		return false
 	}
 
@@ -102,7 +103,7 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 
 	transactionState := getConnectionTransactionState(connection)
 	if !transactionState.inTransaction {
-		return errExecWithoutMulti
+		return errDiscardWithoutMulti
 	}
 
 	if len(transactionState.queuedCommands) == 0 {
@@ -118,6 +119,30 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 	RemoveConnectionTransactionState(connection)
 
 	return encodeExecResponse(responses)
+}
+
+func parseDiscardCommandArguments(command *RedisCommand) (errorResponse string) {
+	if len(command.Args) != 0 {
+		return "-ERR wrong number of arguments for 'discard' command\r\n"
+	}
+
+	return ""
+}
+
+func HandleDiscard(connection net.Conn, command *RedisCommand) string {
+	errorResponse := parseDiscardCommandArguments(command)
+	if errorResponse != "" {
+		return errorResponse
+	}
+
+	transactionState := getConnectionTransactionState(connection)
+	if !transactionState.inTransaction {
+		return errDiscardWithoutMulti
+	}
+
+	RemoveConnectionTransactionState(connection)
+
+	return "+OK\r\n"
 }
 
 func encodeExecResponse(responses []string) string {
@@ -179,6 +204,10 @@ func HandleConnectionCommand(connection net.Conn, command *RedisCommand) string 
 
 	if command.Type == CmdEXEC {
 		return HandleExec(connection, command)
+	}
+
+	if command.Type == CmdDISCARD {
+		return HandleDiscard(connection, command)
 	}
 
 	transactionState := getConnectionTransactionState(connection)
