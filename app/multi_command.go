@@ -103,7 +103,7 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 
 	transactionState := getConnectionTransactionState(connection)
 	if !transactionState.inTransaction {
-		return errDiscardWithoutMulti
+		return errExecWithoutMulti
 	}
 
 	if len(transactionState.queuedCommands) == 0 {
