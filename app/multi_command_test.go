@@ -150,6 +150,51 @@ func TestHandleExecEmptyTransaction(t *testing.T) {
 	}
 }
 
+func resetTransactionTestState(t *testing.T) {
+	t.Helper()
+	GetInstance().cache = make(map[string]CacheItem)
+	ResetConnectionTransactionStatesForTest()
+}
+
+func TestTransactionQueuesSetAndIncrWithoutExecutingThem(t *testing.T) {
+	resetTransactionTestState(t)
+
+	transactionConnection := testConnection(t)
+	_ = testConnection(t)
+
+	multiResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdMULTI,
+		Args: []string{},
+	})
+	if multiResult != "+OK\r\n" {
+		t.Fatalf("HandleConnectionCommand(MULTI) = %q, expected %q", multiResult, "+OK\r\n")
+	}
+
+	setResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdSET,
+		Args: []string{"foo", "41"},
+	})
+	if setResult != queuedCommandResponse {
+		t.Errorf("HandleConnectionCommand(SET) = %q, expected %q", setResult, queuedCommandResponse)
+	}
+
+	incrResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdINCR,
+		Args: []string{"foo"},
+	})
+	if incrResult != queuedCommandResponse {
+		t.Errorf("HandleConnectionCommand(INCR) = %q, expected %q", incrResult, queuedCommandResponse)
+	}
+
+	getResult := HandleGet(&RedisCommand{
+		Type: CmdGET,
+		Args: []string{"foo"},
+	})
+	if getResult != "$-1\r\n" {
+		t.Errorf("HandleGet(foo) = %q, expected %q", getResult, "$-1\r\n")
+	}
+}
+
 func TestHandleExecArgumentParsing(t *testing.T) {
 	ResetConnectionTransactionStatesForTest()
 	connection := testConnection(t)

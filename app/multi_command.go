@@ -7,6 +7,7 @@ import (
 
 const errExecWithoutMulti = "-ERR EXEC without MULTI\r\n"
 const errExecWithoutQueuedCommands = "*0\r\n"
+const queuedCommandResponse = "+QUEUED\r\n"
 
 type connectionTransactionState struct {
 	inTransaction  bool
@@ -43,6 +44,24 @@ func RemoveConnectionTransactionState(connection net.Conn) {
 	defer connectionTransactionMutex.Unlock()
 
 	delete(connectionTransactionStates, connection)
+}
+
+func ShouldQueueCommandDuringTransaction(connection net.Conn, command *RedisCommand) bool {
+	if command.Type == CmdMULTI || command.Type == CmdEXEC {
+		return false
+	}
+
+	transactionState := getConnectionTransactionState(connection)
+	return transactionState.inTransaction
+}
+
+func queueTransactionCommand(transactionState *connectionTransactionState, command *RedisCommand) string {
+	transactionState.queuedCommands = append(transactionState.queuedCommands, &RedisCommand{
+		Type: command.Type,
+		Args: append([]string(nil), command.Args...),
+	})
+
+	return queuedCommandResponse
 }
 
 func parseMultiCommandArguments(command *RedisCommand) (errorResponse string) {
@@ -90,4 +109,62 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 	}
 
 	return "*0\r\n"
+}
+
+func executeConnectionCommand(connection net.Conn, command *RedisCommand) string {
+	switch command.Type {
+	case CmdECHO:
+		return HandleEcho(command)
+	case CmdSET:
+		return HandleSet(command)
+	case CmdGET:
+		return HandleGet(command)
+	case CmdCONFIG:
+		return HandleConfig(command)
+	case CmdKEYS:
+		return HandleKeys(command)
+	case CmdINFO:
+		return HandleInfo(command)
+	case CmdPING:
+		return "+PONG\r\n"
+	case CmdREPLCONF:
+		return "+OK\r\n"
+	case CmdPSYNC:
+		return HandlePsync(command, connection)
+	case CmdWAIT:
+		return HandleWait(command)
+	case CmdTYPE:
+		return HandleType(command)
+	case CmdXADD:
+		return HandleXadd(command)
+	case CmdXRANGE:
+		return HandleXrange(command)
+	case CmdXREAD:
+		return HandleXread(command)
+	case CmdINCR:
+		return HandleIncr(command)
+	case CmdMULTI:
+		return HandleMulti(connection, command)
+	case CmdEXEC:
+		return HandleExec(connection, command)
+	default:
+		return "-ERR unknown command\r\n"
+	}
+}
+
+func HandleConnectionCommand(connection net.Conn, command *RedisCommand) string {
+	if command.Type == CmdMULTI {
+		return HandleMulti(connection, command)
+	}
+
+	if command.Type == CmdEXEC {
+		return HandleExec(connection, command)
+	}
+
+	transactionState := getConnectionTransactionState(connection)
+	if transactionState.inTransaction {
+		return queueTransactionCommand(transactionState, command)
+	}
+
+	return executeConnectionCommand(connection, command)
 }

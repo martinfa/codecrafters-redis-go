@@ -98,50 +98,11 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 			}
 
 			// Propagate write commands to replicas (only if we are master)
-			if cmd.Type.IsWrite() && !isMasterConn {
+			if cmd.Type.IsWrite() && !isMasterConn && !ShouldQueueCommandDuringTransaction(conn, cmd) {
 				PropagateCommand(buffer[pos : pos+nextPos])
 			}
 
-			// Handle different command types
-			var response string
-			switch cmd.Type {
-			case CmdECHO:
-				response = HandleEcho(cmd)
-			case CmdSET:
-				response = HandleSet(cmd)
-			case CmdGET:
-				response = HandleGet(cmd)
-			case CmdCONFIG:
-				response = HandleConfig(cmd)
-			case CmdKEYS:
-				response = HandleKeys(cmd)
-			case CmdINFO:
-				response = HandleInfo(cmd)
-			case CmdPING:
-				response = "+PONG\r\n"
-			case CmdREPLCONF:
-				response = "+OK\r\n"
-			case CmdPSYNC:
-				response = HandlePsync(cmd, conn)
-			case CmdWAIT:
-				response = HandleWait(cmd)
-			case CmdTYPE:
-				response = HandleType(cmd)
-			case CmdXADD:
-				response = HandleXadd(cmd)
-			case CmdXRANGE:
-				response = HandleXrange(cmd)
-			case CmdXREAD:
-				response = HandleXread(cmd)
-			case CmdINCR:
-				response = HandleIncr(cmd)
-			case CmdMULTI:
-				response = HandleMulti(conn, cmd)
-			case CmdEXEC:
-				response = HandleExec(conn, cmd)
-			default:
-				response = "-ERR unknown command\r\n"
-			}
+			response := HandleConnectionCommand(conn, cmd)
 
 			// Send response back to client ONLY if it's not the master connection
 			if !isMasterConn {
