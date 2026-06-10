@@ -121,6 +121,35 @@ func TestHandleExecWithoutMultiReturnsError(t *testing.T) {
 	}
 }
 
+func TestHandleExecEmptyTransaction(t *testing.T) {
+	ResetConnectionTransactionStatesForTest()
+	connection := testConnection(t)
+
+	multiResult := HandleMulti(connection, &RedisCommand{
+		Type: CmdMULTI,
+		Args: []string{},
+	})
+	if multiResult != "+OK\r\n" {
+		t.Fatalf("HandleMulti() = %q, expected %q", multiResult, "+OK\r\n")
+	}
+
+	firstExecResult := HandleExec(connection, &RedisCommand{
+		Type: CmdEXEC,
+		Args: []string{},
+	})
+	if firstExecResult != "*0\r\n" {
+		t.Errorf("first HandleExec() = %q, expected %q", firstExecResult, "*0\r\n")
+	}
+
+	secondExecResult := HandleExec(connection, &RedisCommand{
+		Type: CmdEXEC,
+		Args: []string{},
+	})
+	if secondExecResult != errExecWithoutMulti {
+		t.Errorf("second HandleExec() = %q, expected %q", secondExecResult, errExecWithoutMulti)
+	}
+}
+
 func TestHandleExecArgumentParsing(t *testing.T) {
 	ResetConnectionTransactionStatesForTest()
 	connection := testConnection(t)

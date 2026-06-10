@@ -6,6 +6,7 @@ import (
 )
 
 const errExecWithoutMulti = "-ERR EXEC without MULTI\r\n"
+const errExecWithoutQueuedCommands = "*0\r\n"
 
 type connectionTransactionState struct {
 	inTransaction  bool
@@ -81,6 +82,11 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 	transactionState := getConnectionTransactionState(connection)
 	if !transactionState.inTransaction {
 		return errExecWithoutMulti
+	}
+
+	if len(transactionState.queuedCommands) == 0 {
+		RemoveConnectionTransactionState(connection)
+		return errExecWithoutQueuedCommands
 	}
 
 	return "*0\r\n"
