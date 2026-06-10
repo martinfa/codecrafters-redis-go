@@ -29,12 +29,13 @@ const (
 	CmdMULTI
 	CmdEXEC
 	CmdDISCARD
+	CmdRPUSH
 )
 
 // IsWrite returns true if the command is a write command
 func (c CommandType) IsWrite() bool {
 	switch c {
-	case CmdSET, CmdXADD:
+	case CmdSET, CmdXADD, CmdRPUSH:
 		return true
 	default:
 		return false
@@ -80,6 +81,8 @@ func (c CommandType) String() string {
 		return "XREAD"
 	case CmdDISCARD:
 		return "DISCARD"
+	case CmdRPUSH:
+		return "RPUSH"
 	default:
 		return "UNKNOWN"
 	}
@@ -110,6 +113,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdEXEC
 	case "DISCARD":
 		return CmdDISCARD
+	case "RPUSH":
+		return CmdRPUSH
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":
