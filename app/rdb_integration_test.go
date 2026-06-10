@@ -6,6 +6,8 @@ import (
 )
 
 func TestRDBLoading(t *testing.T) {
+	GetInstance().cache = make(map[string]CacheItem)
+
 	path, _ := filepath.Abs("test.rdb")
 	t.Logf("Loading RDB from: %s", path)
 	err := LoadRDB("test.rdb")

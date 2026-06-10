@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"strconv"
 	"testing"
 )
 
@@ -192,6 +193,65 @@ func TestTransactionQueuesSetAndIncrWithoutExecutingThem(t *testing.T) {
 	})
 	if getResult != "$-1\r\n" {
 		t.Errorf("HandleGet(foo) = %q, expected %q", getResult, "$-1\r\n")
+	}
+}
+
+func formatExpectedExecResponse(responses ...string) string {
+	expected := "*" + strconv.Itoa(len(responses)) + "\r\n"
+	for _, response := range responses {
+		expected += response
+	}
+
+	return expected
+}
+
+func TestHandleExecExecutesQueuedCommands(t *testing.T) {
+	resetTransactionTestState(t)
+
+	transactionConnection := testConnection(t)
+
+	multiResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdMULTI,
+		Args: []string{},
+	})
+	if multiResult != "+OK\r\n" {
+		t.Fatalf("HandleConnectionCommand(MULTI) = %q, expected %q", multiResult, "+OK\r\n")
+	}
+
+	queuedCommands := []*RedisCommand{
+		{Type: CmdSET, Args: []string{"foo", "6"}},
+		{Type: CmdINCR, Args: []string{"foo"}},
+		{Type: CmdINCR, Args: []string{"bar"}},
+		{Type: CmdGET, Args: []string{"bar"}},
+	}
+
+	for _, command := range queuedCommands {
+		result := HandleConnectionCommand(transactionConnection, command)
+		if result != queuedCommandResponse {
+			t.Fatalf("HandleConnectionCommand(%s) = %q, expected %q", command.Type.String(), result, queuedCommandResponse)
+		}
+	}
+
+	execResult := HandleConnectionCommand(transactionConnection, &RedisCommand{
+		Type: CmdEXEC,
+		Args: []string{},
+	})
+	expectedExecResult := formatExpectedExecResponse(
+		"+OK\r\n",
+		":7\r\n",
+		":1\r\n",
+		"$1\r\n1\r\n",
+	)
+	if execResult != expectedExecResult {
+		t.Errorf("HandleConnectionCommand(EXEC) = %q, expected %q", execResult, expectedExecResult)
+	}
+
+	getFooResult := HandleGet(&RedisCommand{
+		Type: CmdGET,
+		Args: []string{"foo"},
+	})
+	if getFooResult != "$1\r\n7\r\n" {
+		t.Errorf("HandleGet(foo) = %q, expected %q", getFooResult, "$1\r\n7\r\n")
 	}
 }
 

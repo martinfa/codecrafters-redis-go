@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -108,7 +110,25 @@ func HandleExec(connection net.Conn, command *RedisCommand) string {
 		return errExecWithoutQueuedCommands
 	}
 
-	return "*0\r\n"
+	responses := make([]string, 0, len(transactionState.queuedCommands))
+	for _, queuedCommand := range transactionState.queuedCommands {
+		responses = append(responses, executeConnectionCommand(connection, queuedCommand))
+	}
+
+	RemoveConnectionTransactionState(connection)
+
+	return encodeExecResponse(responses)
+}
+
+func encodeExecResponse(responses []string) string {
+	var builder strings.Builder
+
+	builder.WriteString(fmt.Sprintf("*%d\r\n", len(responses)))
+	for _, response := range responses {
+		builder.WriteString(response)
+	}
+
+	return builder.String()
 }
 
 func executeConnectionCommand(connection net.Conn, command *RedisCommand) string {
