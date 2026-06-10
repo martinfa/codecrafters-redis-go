@@ -26,6 +26,7 @@ const (
 	CmdXRANGE
 	CmdXREAD
 	CmdINCR
+	CmdMULTI
 )
 
 // IsWrite returns true if the command is a write command
@@ -57,6 +58,8 @@ func (c CommandType) String() string {
 		return "INFO"
 	case CmdINCR:
 		return "INCR"
+	case CmdMULTI:
+		return "MULTI"
 	case CmdREPLCONF:
 		return "REPLCONF"
 	case CmdPSYNC:
@@ -95,6 +98,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdINFO
 	case "INCR":
 		return CmdINCR
+	case "MULTI":
+		return CmdMULTI
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":
