@@ -50,6 +50,7 @@ func ping_command(conn net.Conn) {
 
 func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMasterConn bool, masterReplicationProcessedCommandBytes *int) {
 	defer wg.Done()
+	defer RemoveConnectionTransactionState(conn)
 	for {
 		// Wait for data from the listen goroutine
 		// The ok variable will be false if the channel is closed
@@ -135,7 +136,9 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 			case CmdINCR:
 				response = HandleIncr(cmd)
 			case CmdMULTI:
-				response = HandleMulti(cmd)
+				response = HandleMulti(conn, cmd)
+			case CmdEXEC:
+				response = HandleExec(conn, cmd)
 			default:
 				response = "-ERR unknown command\r\n"
 			}
