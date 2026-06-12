@@ -62,3 +62,20 @@ func (cache *Cache) GetList(listKey string) *List {
 	list, _ := value.(*List)
 	return list
 }
+
+func (cache *Cache) GetListLength(listKey string) int {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	var list *List
+	item, exists := cache.cache[listKey]
+	if exists {
+		list, _ = item.Value.(*List)
+	}
+
+	if list == nil {
+		return 0
+	}
+
+	return len(list.Elements)
+}
