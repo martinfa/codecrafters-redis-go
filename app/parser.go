@@ -30,6 +30,7 @@ const (
 	CmdEXEC
 	CmdDISCARD
 	CmdRPUSH
+	CmdLRANGE
 )
 
 // IsWrite returns true if the command is a write command
@@ -83,6 +84,8 @@ func (c CommandType) String() string {
 		return "DISCARD"
 	case CmdRPUSH:
 		return "RPUSH"
+	case CmdLRANGE:
+		return "LRANGE"
 	default:
 		return "UNKNOWN"
 	}
@@ -115,6 +118,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdDISCARD
 	case "RPUSH":
 		return CmdRPUSH
+	case "LRANGE":
+		return CmdLRANGE
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":

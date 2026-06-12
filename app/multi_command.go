@@ -190,6 +190,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleIncr(command)
 	case CmdRPUSH:
 		return HandleRpush(command)
+	case CmdLRANGE:
+		return HandleLrange(command)
 	case CmdMULTI:
 		return HandleMulti(connection, command)
 	case CmdEXEC:
