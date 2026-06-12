@@ -188,3 +188,71 @@ func TestHandleLrangeArgumentParsing(t *testing.T) {
 		t.Errorf("HandleLrange() = %q, expected %q", result, "-ERR wrong number of arguments for 'lrange' command\r\n")
 	}
 }
+
+func TestHandleLrangeNegativeIndexes(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(t *testing.T)
+		args     []string
+		expected string
+	}{
+		{
+			name:     "returns last two elements for indexes -2 and -1",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "-2", "-1"},
+			expected: formatExpectedLrangeResponse("d", "e"),
+		},
+		{
+			name:     "returns all items except last two for indexes 0 and -3",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "0", "-3"},
+			expected: formatExpectedLrangeResponse("a", "b", "c"),
+		},
+		{
+			name:     "returns elements from index 2 through end for indexes 2 and -1",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "2", "-1"},
+			expected: formatExpectedLrangeResponse("c", "d", "e"),
+		},
+		{
+			name:     "returns single last element for indexes -1 and -1",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "-1", "-1"},
+			expected: formatExpectedLrangeResponse("e"),
+		},
+		{
+			name:     "treats out of range negative start index as zero",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "-6", "2"},
+			expected: formatExpectedLrangeResponse("a", "b", "c"),
+		},
+		{
+			name:     "treats out of range negative start index as zero through end",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "-6", "-1"},
+			expected: formatExpectedLrangeResponse("a", "b", "c", "d", "e"),
+		},
+		{
+			name:     "returns empty array when normalized start is greater than stop",
+			setup:    seedListKeyWithFiveElements,
+			args:     []string{"list_key", "-1", "-3"},
+			expected: "*0\r\n",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			resetLrangeTestState(t)
+			testCase.setup(t)
+
+			result := HandleLrange(&RedisCommand{
+				Type: CmdLRANGE,
+				Args: testCase.args,
+			})
+
+			if result != testCase.expected {
+				t.Errorf("HandleLrange() = %q, expected %q", result, testCase.expected)
+			}
+		})
+	}
+}

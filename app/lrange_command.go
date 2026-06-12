@@ -14,6 +14,18 @@ func parseLrangeCommandArguments(command *RedisCommand) (listKey string, startIn
 	return command.Args[0], command.Args[1], command.Args[2], ""
 }
 
+func normalizeLrangeIndex(index int, listLength int) int {
+	if index < 0 {
+		index = listLength + index
+	}
+
+	if index < 0 {
+		return 0
+	}
+
+	return index
+}
+
 func HandleLrange(command *RedisCommand) string {
 	listKey, startIndexString, stopIndexString, errorResponse := parseLrangeCommandArguments(command)
 	if errorResponse != "" {
@@ -36,10 +48,13 @@ func HandleLrange(command *RedisCommand) string {
 	}
 
 	listLength := len(list.Elements)
+
+	startIndex = normalizeLrangeIndex(startIndex, listLength)
 	if startIndex >= listLength {
 		return "*0\r\n"
 	}
 
+	stopIndex = normalizeLrangeIndex(stopIndex, listLength)
 	if stopIndex >= listLength {
 		stopIndex = listLength - 1
 	}
