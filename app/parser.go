@@ -33,12 +33,13 @@ const (
 	CmdLRANGE
 	CmdLPUSH
 	CmdLLEN
+	CmdLPOP
 )
 
 // IsWrite returns true if the command is a write command
 func (c CommandType) IsWrite() bool {
 	switch c {
-	case CmdSET, CmdXADD, CmdRPUSH, CmdLPUSH:
+	case CmdSET, CmdXADD, CmdRPUSH, CmdLPUSH, CmdLPOP:
 		return true
 	default:
 		return false
@@ -92,6 +93,8 @@ func (c CommandType) String() string {
 		return "LPUSH"
 	case CmdLLEN:
 		return "LLEN"
+	case CmdLPOP:
+		return "LPOP"
 	default:
 		return "UNKNOWN"
 	}
@@ -130,6 +133,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdLPUSH
 	case "LLEN":
 		return CmdLLEN
+	case "LPOP":
+		return CmdLPOP
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":

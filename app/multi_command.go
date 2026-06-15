@@ -196,6 +196,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleLrange(command)
 	case CmdLLEN:
 		return HandleLlen(command)
+	case CmdLPOP:
+		return HandleLpop(command)
 	case CmdMULTI:
 		return HandleMulti(connection, command)
 	case CmdEXEC:

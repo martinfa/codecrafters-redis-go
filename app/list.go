@@ -79,3 +79,28 @@ func (cache *Cache) GetListLength(listKey string) int {
 
 	return len(list.Elements)
 }
+
+func (cache *Cache) PopListLeft(listKey string) (string, bool) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	var list *List
+	item, exists := cache.cache[listKey]
+	if exists {
+		list, _ = item.Value.(*List)
+	}
+
+	if list == nil || len(list.Elements) == 0 {
+		return "", false
+	}
+
+	poppedElement := list.Elements[0]
+	list.Elements = list.Elements[1:]
+
+	cache.cache[listKey] = CacheItem{
+		Value:      list,
+		Expiration: 0,
+	}
+
+	return poppedElement, true
+}
