@@ -80,7 +80,7 @@ func (cache *Cache) GetListLength(listKey string) int {
 	return len(list.Elements)
 }
 
-func (cache *Cache) PopListLeft(listKey string) (string, bool) {
+func (cache *Cache) PopListLeft(listKey string, count int) ([]string, bool) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
@@ -91,16 +91,20 @@ func (cache *Cache) PopListLeft(listKey string) (string, bool) {
 	}
 
 	if list == nil || len(list.Elements) == 0 {
-		return "", false
+		return nil, false
 	}
 
-	poppedElement := list.Elements[0]
-	list.Elements = list.Elements[1:]
+	if count > len(list.Elements) {
+		count = len(list.Elements)
+	}
+
+	poppedElements := append([]string(nil), list.Elements[:count]...)
+	list.Elements = list.Elements[count:]
 
 	cache.cache[listKey] = CacheItem{
 		Value:      list,
 		Expiration: 0,
 	}
 
-	return poppedElement, true
+	return poppedElements, true
 }

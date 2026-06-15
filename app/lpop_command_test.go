@@ -16,15 +16,24 @@ func formatExpectedBulkStringResponse(value string) string {
 
 func TestParseLpopCommandArguments(t *testing.T) {
 	tests := []struct {
-		name            string
-		args            []string
-		expectedListKey string
-		expectedError   string
+		name              string
+		args              []string
+		expectedListKey   string
+		expectedPopCount  string
+		expectedHasCount  bool
+		expectedError     string
 	}{
 		{
 			name:            "parses list key argument",
 			args:            []string{"list_key"},
 			expectedListKey: "list_key",
+		},
+		{
+			name:             "parses list key and pop count",
+			args:             []string{"list_key", "2"},
+			expectedListKey:  "list_key",
+			expectedPopCount: "2",
+			expectedHasCount: true,
 		},
 		{
 			name:          "rejects no arguments",
@@ -33,14 +42,14 @@ func TestParseLpopCommandArguments(t *testing.T) {
 		},
 		{
 			name:          "rejects too many arguments",
-			args:          []string{"list_key", "extra"},
+			args:          []string{"list_key", "2", "extra"},
 			expectedError: "-ERR wrong number of arguments for 'lpop' command\r\n",
 		},
 	}
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			listKey, errorResponse := parseLpopCommandArguments(&RedisCommand{
+			listKey, popCount, hasPopCount, errorResponse := parseLpopCommandArguments(&RedisCommand{
 				Type: CmdLPOP,
 				Args: testCase.args,
 			})
@@ -51,6 +60,14 @@ func TestParseLpopCommandArguments(t *testing.T) {
 
 			if listKey != testCase.expectedListKey {
 				t.Errorf("parseLpopCommandArguments() listKey = %q, expected %q", listKey, testCase.expectedListKey)
+			}
+
+			if popCount != testCase.expectedPopCount {
+				t.Errorf("parseLpopCommandArguments() popCount = %q, expected %q", popCount, testCase.expectedPopCount)
+			}
+
+			if hasPopCount != testCase.expectedHasCount {
+				t.Errorf("parseLpopCommandArguments() hasPopCount = %v, expected %v", hasPopCount, testCase.expectedHasCount)
 			}
 		})
 	}
@@ -169,5 +186,85 @@ func TestHandleLpopArgumentParsing(t *testing.T) {
 
 	if result != "-ERR wrong number of arguments for 'lpop' command\r\n" {
 		t.Errorf("HandleLpop() = %q, expected %q", result, "-ERR wrong number of arguments for 'lpop' command\r\n")
+	}
+}
+
+func TestHandleLpopRemovesMultipleElements(t *testing.T) {
+	resetLpopTestState(t)
+
+	HandleRpush(&RedisCommand{
+		Type: CmdRPUSH,
+		Args: []string{"list_key", "one", "two", "three", "four", "five"},
+	})
+
+	popResult := HandleLpop(&RedisCommand{
+		Type: CmdLPOP,
+		Args: []string{"list_key", "2"},
+	})
+	expectedPopResult := formatExpectedLrangeResponse("one", "two")
+	if popResult != expectedPopResult {
+		t.Fatalf("HandleLpop() = %q, expected %q", popResult, expectedPopResult)
+	}
+
+	rangeResult := HandleLrange(&RedisCommand{
+		Type: CmdLRANGE,
+		Args: []string{"list_key", "0", "-1"},
+	})
+	expectedRangeResult := formatExpectedLrangeResponse("three", "four", "five")
+	if rangeResult != expectedRangeResult {
+		t.Errorf("HandleLrange() = %q, expected %q", rangeResult, expectedRangeResult)
+	}
+}
+
+func TestHandleLpopRemovesAllElementsWhenCountExceedsListLength(t *testing.T) {
+	resetLpopTestState(t)
+
+	HandleRpush(&RedisCommand{
+		Type: CmdRPUSH,
+		Args: []string{"list_key", "a", "b", "c", "d"},
+	})
+
+	popResult := HandleLpop(&RedisCommand{
+		Type: CmdLPOP,
+		Args: []string{"list_key", "10"},
+	})
+	expectedPopResult := formatExpectedLrangeResponse("a", "b", "c", "d")
+	if popResult != expectedPopResult {
+		t.Fatalf("HandleLpop() = %q, expected %q", popResult, expectedPopResult)
+	}
+
+	rangeResult := HandleLrange(&RedisCommand{
+		Type: CmdLRANGE,
+		Args: []string{"list_key", "0", "-1"},
+	})
+	if rangeResult != "*0\r\n" {
+		t.Errorf("HandleLrange() = %q, expected %q", rangeResult, "*0\r\n")
+	}
+}
+
+func TestHandleLpopCodecraftersMultipleElementsExample(t *testing.T) {
+	resetLpopTestState(t)
+
+	HandleRpush(&RedisCommand{
+		Type: CmdRPUSH,
+		Args: []string{"list_key", "a", "b", "c", "d"},
+	})
+
+	popResult := HandleLpop(&RedisCommand{
+		Type: CmdLPOP,
+		Args: []string{"list_key", "2"},
+	})
+	expectedPopResult := formatExpectedLrangeResponse("a", "b")
+	if popResult != expectedPopResult {
+		t.Fatalf("HandleLpop() = %q, expected %q", popResult, expectedPopResult)
+	}
+
+	rangeResult := HandleLrange(&RedisCommand{
+		Type: CmdLRANGE,
+		Args: []string{"list_key", "0", "-1"},
+	})
+	expectedRangeResult := formatExpectedLrangeResponse("c", "d")
+	if rangeResult != expectedRangeResult {
+		t.Errorf("HandleLrange() = %q, expected %q", rangeResult, expectedRangeResult)
 	}
 }
