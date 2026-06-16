@@ -41,12 +41,13 @@ const (
 	CmdPUNSUBSCRIBE
 	CmdQUIT
 	CmdRESET
+	CmdPUBLISH
 )
 
 // IsWrite returns true if the command is a write command
 func (c CommandType) IsWrite() bool {
 	switch c {
-	case CmdSET, CmdXADD, CmdRPUSH, CmdLPUSH, CmdLPOP:
+	case CmdSET, CmdXADD, CmdRPUSH, CmdLPUSH, CmdLPOP, CmdPUBLISH:
 		return true
 	default:
 		return false
@@ -116,6 +117,8 @@ func (c CommandType) String() string {
 		return "QUIT"
 	case CmdRESET:
 		return "RESET"
+	case CmdPUBLISH:
+		return "PUBLISH"
 	default:
 		return "UNKNOWN"
 	}
@@ -170,6 +173,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdQUIT
 	case "RESET":
 		return CmdRESET
+	case "PUBLISH":
+		return CmdPUBLISH
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":
