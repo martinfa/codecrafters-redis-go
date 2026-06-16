@@ -30,6 +30,12 @@ func TestParseBlpopCommandArguments(t *testing.T) {
 			expectedTimeoutSeconds: "0",
 		},
 		{
+			name:                   "parses fractional timeout",
+			args:                   []string{"list_key", "0.5"},
+			expectedListKey:        "list_key",
+			expectedTimeoutSeconds: "0.5",
+		},
+		{
 			name:          "rejects no arguments",
 			args:          []string{},
 			expectedError: "-ERR wrong number of arguments for 'blpop' command\r\n",
@@ -213,5 +219,87 @@ func TestHandleBlpopRejectsInvalidTimeout(t *testing.T) {
 
 	if result != "-ERR value is not an integer or out of range\r\n" {
 		t.Errorf("HandleBlpop() = %q, expected %q", result, "-ERR value is not an integer or out of range\r\n")
+	}
+}
+
+func TestHandleBlpopReturnsNullArrayOnTimeout(t *testing.T) {
+	resetBlpopTestState(t)
+
+	startTime := time.Now()
+	result := HandleBlpop(&RedisCommand{
+		Type: CmdBLPOP,
+		Args: []string{"list_key", "0.1"},
+	})
+	elapsed := time.Since(startTime)
+
+	if result != blockingBlpopTimeoutResponse {
+		t.Errorf("HandleBlpop() = %q, expected %q", result, blockingBlpopTimeoutResponse)
+	}
+
+	if elapsed < 90*time.Millisecond {
+		t.Errorf("expected to block for at least 90ms, got %v", elapsed)
+	}
+}
+
+func TestHandleBlpopWaitsForPushBeforeTimeout(t *testing.T) {
+	resetBlpopTestState(t)
+
+	resultChannel := make(chan string, 1)
+	go func() {
+		resultChannel <- HandleBlpop(&RedisCommand{
+			Type: CmdBLPOP,
+			Args: []string{"list_key", "1"},
+		})
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	HandleRpush(&RedisCommand{
+		Type: CmdRPUSH,
+		Args: []string{"list_key", "foo"},
+	})
+
+	select {
+	case result := <-resultChannel:
+		expected := formatExpectedBlpopResponse("list_key", "foo")
+		if result != expected {
+			t.Errorf("HandleBlpop() = %q, expected %q", result, expected)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for BLPOP response before timeout")
+	}
+}
+
+func TestHandleBlpopUnblocksTimedOutWaiterDoesNotReceiveLaterPush(t *testing.T) {
+	resetBlpopTestState(t)
+
+	resultChannel := make(chan string, 1)
+	go func() {
+		resultChannel <- HandleBlpop(&RedisCommand{
+			Type: CmdBLPOP,
+			Args: []string{"list_key", "0.1"},
+		})
+	}()
+
+	select {
+	case result := <-resultChannel:
+		if result != blockingBlpopTimeoutResponse {
+			t.Fatalf("HandleBlpop() = %q, expected %q", result, blockingBlpopTimeoutResponse)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for BLPOP timeout response")
+	}
+
+	HandleRpush(&RedisCommand{
+		Type: CmdRPUSH,
+		Args: []string{"list_key", "foo"},
+	})
+
+	rangeResult := HandleLrange(&RedisCommand{
+		Type: CmdLRANGE,
+		Args: []string{"list_key", "0", "-1"},
+	})
+	if rangeResult != formatExpectedLrangeResponse("foo") {
+		t.Errorf("HandleLrange() = %q, expected element to remain on list after timed out BLPOP", rangeResult)
 	}
 }

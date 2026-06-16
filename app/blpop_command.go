@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const blockingBlpopTimeoutResponse = "*-1\r\n"
@@ -53,15 +54,23 @@ func notifyBlockingBlpopWaiters(listKey string) {
 	}
 }
 
-func waitForBlockingBlpopResponse(listKey string, timeoutSeconds int) string {
+func waitForBlockingBlpopResponse(listKey string, timeoutSeconds float64) string {
 	waiter := GetBlockingBlpopRegistry().RegisterWaiter(listKey)
 	defer waiter.Unregister()
 
-	_ = timeoutSeconds
+	if timeoutSeconds == 0 {
+		return <-waiter.ResponseChannel
+	}
 
-	response := <-waiter.ResponseChannel
+	timer := time.NewTimer(time.Duration(timeoutSeconds * float64(time.Second)))
+	defer timer.Stop()
 
-	return response
+	select {
+	case response := <-waiter.ResponseChannel:
+		return response
+	case <-timer.C:
+		return blockingBlpopTimeoutResponse
+	}
 }
 
 func HandleBlpop(command *RedisCommand) string {
@@ -70,7 +79,7 @@ func HandleBlpop(command *RedisCommand) string {
 		return errorResponse
 	}
 
-	timeoutSeconds, parseTimeoutError := strconv.Atoi(timeoutSecondsString)
+	timeoutSeconds, parseTimeoutError := strconv.ParseFloat(timeoutSecondsString, 64)
 	if parseTimeoutError != nil {
 		return "-ERR value is not an integer or out of range\r\n"
 	}
