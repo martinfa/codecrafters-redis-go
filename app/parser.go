@@ -35,6 +35,7 @@ const (
 	CmdLLEN
 	CmdLPOP
 	CmdBLPOP
+	CmdSUBSCRIBE
 )
 
 // IsWrite returns true if the command is a write command
@@ -98,6 +99,8 @@ func (c CommandType) String() string {
 		return "LPOP"
 	case CmdBLPOP:
 		return "BLPOP"
+	case CmdSUBSCRIBE:
+		return "SUBSCRIBE"
 	default:
 		return "UNKNOWN"
 	}
@@ -140,6 +143,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdLPOP
 	case "BLPOP":
 		return CmdBLPOP
+	case "SUBSCRIBE":
+		return CmdSUBSCRIBE
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":

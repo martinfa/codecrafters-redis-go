@@ -200,6 +200,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleLpop(command)
 	case CmdBLPOP:
 		return HandleBlpop(command)
+	case CmdSUBSCRIBE:
+		return HandleSubscribe(connection, command)
 	case CmdMULTI:
 		return HandleMulti(connection, command)
 	case CmdEXEC:
