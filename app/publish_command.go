@@ -10,14 +10,32 @@ func parsePublishCommandArguments(command *RedisCommand) (channel string, messag
 	return command.Args[0], command.Args[1], ""
 }
 
-func countChannelSubscribers(channel string) int {
+func encodePubSubMessageResponse(channel string, message string) string {
+	return fmt.Sprintf(
+		"*3\r\n$7\r\nmessage\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+		len(channel),
+		channel,
+		len(message),
+		message,
+	)
+}
+
+func deliverPublishedMessage(channel string, message string) int {
 	connectionPubSubMutex.Lock()
 	defer connectionPubSubMutex.Unlock()
 
+	encodedMessage := encodePubSubMessageResponse(channel, message)
 	subscriberCount := 0
-	for _, pubSubState := range connectionPubSubStates {
-		if _, subscribed := pubSubState.subscribedChannels[channel]; subscribed {
-			subscriberCount++
+
+	for connection, pubSubState := range connectionPubSubStates {
+		if _, subscribed := pubSubState.subscribedChannels[channel]; !subscribed {
+			continue
+		}
+
+		subscriberCount++
+		writeError := WriteToConnection(connection, encodedMessage)
+		if writeError != nil {
+			fmt.Printf("Error delivering message to connection: %s\n", writeError.Error())
 		}
 	}
 
@@ -25,12 +43,12 @@ func countChannelSubscribers(channel string) int {
 }
 
 func HandlePublish(command *RedisCommand) string {
-	channel, _, errorResponse := parsePublishCommandArguments(command)
+	channel, message, errorResponse := parsePublishCommandArguments(command)
 	if errorResponse != "" {
 		return errorResponse
 	}
 
-	subscriberCount := countChannelSubscribers(channel)
+	subscriberCount := deliverPublishedMessage(channel, message)
 
 	return fmt.Sprintf(":%d\r\n", subscriberCount)
 }

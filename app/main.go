@@ -52,6 +52,7 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 	defer wg.Done()
 	defer RemoveConnectionTransactionState(conn)
 	defer RemoveConnectionPubSubState(conn)
+	defer RemoveConnectionWriteMutex(conn)
 	for {
 		// Wait for data from the listen goroutine
 		// The ok variable will be false if the channel is closed
@@ -107,9 +108,9 @@ func eventReactor(channel chan []byte, conn net.Conn, wg *sync.WaitGroup, isMast
 
 			// Send response back to client ONLY if it's not the master connection
 			if !isMasterConn {
-				_, err := conn.Write([]byte(response))
-				if err != nil {
-					fmt.Printf("Error writing response to connection %s: %s\n", conn.RemoteAddr(), err.Error())
+				writeError := WriteToConnection(conn, response)
+				if writeError != nil {
+					fmt.Printf("Error writing response to connection %s: %s\n", conn.RemoteAddr(), writeError.Error())
 				} else {
 					fmt.Printf("Sent response to %s: %q\n", conn.RemoteAddr(), response)
 				}
