@@ -17,6 +17,7 @@ func HandleLpush(command *RedisCommand) string {
 	}
 
 	listLength := GetInstance().PushListLeft(listKey, elements...)
+	notifyBlockingBlpopWaiters(listKey)
 
 	return fmt.Sprintf(":%d\r\n", listLength)
 }
