@@ -171,7 +171,7 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 	case CmdINFO:
 		return HandleInfo(command)
 	case CmdPING:
-		return "+PONG\r\n"
+		return HandlePing(connection, command)
 	case CmdREPLCONF:
 		return "+OK\r\n"
 	case CmdPSYNC:

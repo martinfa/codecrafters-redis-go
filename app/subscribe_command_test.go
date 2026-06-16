@@ -169,8 +169,41 @@ func TestHandleConnectionCommandAllowsSubscribeAndPingInSubscribedMode(t *testin
 		Type: CmdPING,
 		Args: []string{},
 	})
-	if pingResult != "+PONG\r\n" {
-		t.Errorf("PING in subscribed mode = %q, expected %q", pingResult, "+PONG\r\n")
+	if pingResult != subscribedModePingResponse {
+		t.Errorf("PING in subscribed mode = %q, expected %q", pingResult, subscribedModePingResponse)
+	}
+}
+
+func TestHandlePingReturnsNormalResponseWhenNotSubscribed(t *testing.T) {
+	resetSubscribeTestState(t)
+
+	connection := testConnection(t)
+
+	pingResult := HandleConnectionCommand(connection, &RedisCommand{
+		Type: CmdPING,
+		Args: []string{},
+	})
+	if pingResult != normalPingResponse {
+		t.Errorf("PING before subscribe = %q, expected %q", pingResult, normalPingResponse)
+	}
+}
+
+func TestHandlePingReturnsSubscribedModeResponseAfterSubscribe(t *testing.T) {
+	resetSubscribeTestState(t)
+
+	connection := testConnection(t)
+
+	HandleSubscribe(connection, &RedisCommand{
+		Type: CmdSUBSCRIBE,
+		Args: []string{"foo"},
+	})
+
+	pingResult := HandleConnectionCommand(connection, &RedisCommand{
+		Type: CmdPING,
+		Args: []string{},
+	})
+	if pingResult != subscribedModePingResponse {
+		t.Errorf("PING in subscribed mode = %q, expected %q", pingResult, subscribedModePingResponse)
 	}
 }
 
