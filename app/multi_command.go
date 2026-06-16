@@ -212,6 +212,10 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 }
 
 func HandleConnectionCommand(connection net.Conn, command *RedisCommand) string {
+	if isConnectionInSubscribedMode(connection) && !isCommandAllowedInSubscribedMode(command.Type) {
+		return subscribedModeErrorResponse(command.Type)
+	}
+
 	if command.Type == CmdMULTI {
 		return HandleMulti(connection, command)
 	}

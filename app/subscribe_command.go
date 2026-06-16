@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -42,6 +43,41 @@ func RemoveConnectionPubSubState(connection net.Conn) {
 	defer connectionPubSubMutex.Unlock()
 
 	delete(connectionPubSubStates, connection)
+}
+
+func getConnectionPubSubStateIfExists(connection net.Conn) (*connectionPubSubState, bool) {
+	connectionPubSubMutex.Lock()
+	defer connectionPubSubMutex.Unlock()
+
+	state, exists := connectionPubSubStates[connection]
+	return state, exists
+}
+
+func isConnectionInSubscribedMode(connection net.Conn) bool {
+	state, exists := getConnectionPubSubStateIfExists(connection)
+	if !exists {
+		return false
+	}
+
+	return len(state.subscribedChannels) > 0
+}
+
+func isCommandAllowedInSubscribedMode(commandType CommandType) bool {
+	switch commandType {
+	case CmdSUBSCRIBE, CmdUNSUBSCRIBE, CmdPSUBSCRIBE, CmdPUNSUBSCRIBE, CmdPING, CmdQUIT, CmdRESET:
+		return true
+	default:
+		return false
+	}
+}
+
+func subscribedModeErrorResponse(commandType CommandType) string {
+	commandName := strings.ToLower(commandType.String())
+
+	return fmt.Sprintf(
+		"-ERR Can't execute '%s': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context\r\n",
+		commandName,
+	)
 }
 
 func parseSubscribeCommandArguments(command *RedisCommand) (channel string, errorResponse string) {

@@ -36,6 +36,11 @@ const (
 	CmdLPOP
 	CmdBLPOP
 	CmdSUBSCRIBE
+	CmdUNSUBSCRIBE
+	CmdPSUBSCRIBE
+	CmdPUNSUBSCRIBE
+	CmdQUIT
+	CmdRESET
 )
 
 // IsWrite returns true if the command is a write command
@@ -101,6 +106,16 @@ func (c CommandType) String() string {
 		return "BLPOP"
 	case CmdSUBSCRIBE:
 		return "SUBSCRIBE"
+	case CmdUNSUBSCRIBE:
+		return "UNSUBSCRIBE"
+	case CmdPSUBSCRIBE:
+		return "PSUBSCRIBE"
+	case CmdPUNSUBSCRIBE:
+		return "PUNSUBSCRIBE"
+	case CmdQUIT:
+		return "QUIT"
+	case CmdRESET:
+		return "RESET"
 	default:
 		return "UNKNOWN"
 	}
@@ -145,6 +160,16 @@ func ParseCommandType(name string) CommandType {
 		return CmdBLPOP
 	case "SUBSCRIBE":
 		return CmdSUBSCRIBE
+	case "UNSUBSCRIBE":
+		return CmdUNSUBSCRIBE
+	case "PSUBSCRIBE":
+		return CmdPSUBSCRIBE
+	case "PUNSUBSCRIBE":
+		return CmdPUNSUBSCRIBE
+	case "QUIT":
+		return CmdQUIT
+	case "RESET":
+		return CmdRESET
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":

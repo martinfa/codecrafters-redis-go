@@ -99,3 +99,92 @@ func TestHandleSubscribeArgumentParsing(t *testing.T) {
 		t.Errorf("HandleSubscribe() = %q, expected %q", result, "-ERR wrong number of arguments for 'subscribe' command\r\n")
 	}
 }
+
+func TestHandleConnectionCommandRejectsDisallowedCommandsInSubscribedMode(t *testing.T) {
+	resetSubscribeTestState(t)
+	ResetConnectionTransactionStatesForTest()
+
+	connection := testConnection(t)
+
+	HandleSubscribe(connection, &RedisCommand{
+		Type: CmdSUBSCRIBE,
+		Args: []string{"foo"},
+	})
+
+	tests := []struct {
+		name        string
+		command     *RedisCommand
+		commandName string
+	}{
+		{
+			name:        "rejects echo",
+			command:     &RedisCommand{Type: CmdECHO, Args: []string{"hey"}},
+			commandName: "echo",
+		},
+		{
+			name:        "rejects set",
+			command:     &RedisCommand{Type: CmdSET, Args: []string{"key", "value"}},
+			commandName: "set",
+		},
+		{
+			name:        "rejects get",
+			command:     &RedisCommand{Type: CmdGET, Args: []string{"key"}},
+			commandName: "get",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := HandleConnectionCommand(connection, testCase.command)
+
+			expectedPrefix := "-ERR Can't execute '" + testCase.commandName + "'"
+			if len(result) < len(expectedPrefix) || result[:len(expectedPrefix)] != expectedPrefix {
+				t.Errorf("HandleConnectionCommand() = %q, expected prefix %q", result, expectedPrefix)
+			}
+		})
+	}
+}
+
+func TestHandleConnectionCommandAllowsSubscribeAndPingInSubscribedMode(t *testing.T) {
+	resetSubscribeTestState(t)
+	ResetConnectionTransactionStatesForTest()
+
+	connection := testConnection(t)
+
+	HandleSubscribe(connection, &RedisCommand{
+		Type: CmdSUBSCRIBE,
+		Args: []string{"foo"},
+	})
+
+	secondSubscribeResult := HandleConnectionCommand(connection, &RedisCommand{
+		Type: CmdSUBSCRIBE,
+		Args: []string{"bar"},
+	})
+	expectedSecondSubscribe := formatExpectedSubscribeResponse("bar", 2)
+	if secondSubscribeResult != expectedSecondSubscribe {
+		t.Errorf("second SUBSCRIBE = %q, expected %q", secondSubscribeResult, expectedSecondSubscribe)
+	}
+
+	pingResult := HandleConnectionCommand(connection, &RedisCommand{
+		Type: CmdPING,
+		Args: []string{},
+	})
+	if pingResult != "+PONG\r\n" {
+		t.Errorf("PING in subscribed mode = %q, expected %q", pingResult, "+PONG\r\n")
+	}
+}
+
+func TestHandleConnectionCommandAllowsCommandsBeforeSubscribe(t *testing.T) {
+	resetSubscribeTestState(t)
+	ResetConnectionTransactionStatesForTest()
+
+	connection := testConnection(t)
+
+	echoResult := HandleConnectionCommand(connection, &RedisCommand{
+		Type: CmdECHO,
+		Args: []string{"hey"},
+	})
+	if echoResult != "$3\r\nhey\r\n" {
+		t.Errorf("ECHO before subscribe = %q, expected %q", echoResult, "$3\r\nhey\r\n")
+	}
+}
