@@ -202,6 +202,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleBlpop(command)
 	case CmdSUBSCRIBE:
 		return HandleSubscribe(connection, command)
+	case CmdUNSUBSCRIBE:
+		return HandleUnsubscribe(connection, command)
 	case CmdPUBLISH:
 		return HandlePublish(command)
 	case CmdMULTI:
