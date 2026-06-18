@@ -206,6 +206,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleUnsubscribe(connection, command)
 	case CmdPUBLISH:
 		return HandlePublish(command)
+	case CmdZADD:
+		return HandleZadd(command)
 	case CmdMULTI:
 		return HandleMulti(connection, command)
 	case CmdEXEC:
