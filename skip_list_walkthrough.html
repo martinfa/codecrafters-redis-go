@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skip List Insert — Full Walkthrough</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #9aa7b8;
+      --accent: #5bbcff;
+      --current: #ffb454;
+      --next: #7ee787;
+      --update: #d2a8ff;
+      --new: #79c0ff;
+      --line: #304057;
+      --code-bg: #101826;
+      --phase: #3fb950;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --text: #1f2937;
+        --muted: #64748b;
+        --accent: #2563eb;
+        --current: #d97706;
+        --next: #059669;
+        --update: #7c3aed;
+        --new: #0284c7;
+        --line: #cbd5e1;
+        --code-bg: #eef2f7;
+        --phase: #15803d;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 1.5rem; }
+    p.lead { margin: 0 0 16px; color: var(--muted); }
+    .phase-badge {
+      display: inline-block;
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--phase);
+      border: 1px solid rgba(63, 185, 80, 0.35);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      border: 1px solid var(--line);
+      background: var(--code-bg);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button.primary { background: var(--accent); color: white; border-color: transparent; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .step-label { font-size: 0.9rem; color: var(--muted); margin-bottom: 8px; }
+    .step-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+    .explain { margin: 0 0 12px; }
+    pre.code {
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      margin: 0;
+      max-height: 420px;
+    }
+    .hl-search { background: rgba(255, 180, 84, 0.22); display: block; }
+    .hl-inner { background: rgba(126, 231, 135, 0.22); display: block; }
+    .hl-save { background: rgba(210, 168, 255, 0.22); display: block; }
+    .hl-create { background: rgba(121, 192, 255, 0.22); display: block; }
+    .hl-grow { background: rgba(255, 123, 114, 0.18); display: block; }
+    .hl-splice { background: rgba(163, 113, 247, 0.22); display: block; }
+    .hl-done { background: rgba(63, 185, 80, 0.18); display: block; }
+    .state {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.85rem;
+    }
+    .chip strong { color: var(--accent); }
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .update-list {
+      margin-top: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Skip List <code>Insert</code> — full walkthrough</h1>
+    <p class="lead">
+      Every step of <code>skip_list.go</code> lines 39–71.
+      Insert <strong>caz(30.1)</strong> into <strong>HEAD → baz(20) → paz(40)</strong>.
+      List starts at <strong>skipList.level = 1</strong>; new node rolls <strong>newLevel = 2</strong> (fixed for demo).
+    </p>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="controls">
+          <button id="prevBtn">← Previous</button>
+          <button id="nextBtn" class="primary">Next step →</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+        <div class="phase-badge" id="phaseBadge">Phase 1: Search</div>
+        <div class="step-label" id="stepCounter">Step 0 / 0</div>
+        <div class="step-title" id="stepTitle"></div>
+        <p class="explain" id="stepExplain"></p>
+        <svg id="diagram" viewBox="0 0 760 300" aria-label="Skip list diagram"></svg>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--current)"></span>current</span>
+          <span><span class="dot" style="background:var(--next)"></span>next / edge being checked</span>
+          <span><span class="dot" style="background:var(--update)"></span>update[] predecessor</span>
+          <span><span class="dot" style="background:var(--new)"></span>new node caz</span>
+        </div>
+        <div class="update-list" id="updateList"></div>
+      </section>
+
+      <section class="panel">
+        <pre class="code" id="codeBlock"></pre>
+        <div class="state">
+          <div class="chip"><strong>skipList.level</strong><br><span id="stateListLevel">1</span></div>
+          <div class="chip"><strong>newLevel</strong><br><span id="stateNewLevel">—</span></div>
+          <div class="chip"><strong>levelIndex</strong><br><span id="stateLevel">—</span></div>
+          <div class="chip"><strong>current</strong><br><span id="stateCurrent">HEAD</span></div>
+          <div class="chip"><strong>next / action</strong><br><span id="stateNext">—</span></div>
+          <div class="chip"><strong>length</strong><br><span id="stateLength">2</span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const codeLines = [
+      "func (skipList *SkipList) Insert(score float64, member string) {",
+      "    update := make([]*SkipListNode, skipListMaxLevel)",
+      "    current := skipList.head",
+      "",
+      "    for levelIndex := skipList.level - 1; levelIndex >= 0; levelIndex-- {",
+      "        for current.forward[levelIndex] != nil &&",
+      "            compareSkipListMembers(next.score, next.member, score, member) < 0 {",
+      "            current = current.forward[levelIndex]",
+      "        }",
+      "        update[levelIndex] = current",
+      "    }",
+      "",
+      "    newLevel := skipList.randomLevel()",
+      "    node := &SkipListNode{",
+      "        member: member, score: score,",
+      "        forward: make([]*SkipListNode, newLevel),",
+      "    }",
+      "",
+      "    if newLevel > skipList.level {",
+      "        for levelIndex := skipList.level; levelIndex < newLevel; levelIndex++ {",
+      "            update[levelIndex] = skipList.head",
+      "        }",
+      "        skipList.level = newLevel",
+      "    }",
+      "",
+      "    for levelIndex := 0; levelIndex < newLevel; levelIndex++ {",
+      "        node.forward[levelIndex] = update[levelIndex].forward[levelIndex]",
+      "        update[levelIndex].forward[levelIndex] = node",
+      "    }",
+      "",
+      "    skipList.length++",
+      "}",
+    ];
+
+    const steps = [
+      {
+        phase: "Phase 1: Search",
+        title: "Setup",
+        explain: "Allocate update[] and start at HEAD. skipList.level = 1, so search only runs on level 0.",
+        highlights: [1, 2], hlClass: "hl-search",
+        listLevel: 1, newLevel: "—", levelIndex: "—", current: "HEAD", next: "—", length: 2,
+        update: {}, diagram: "before",
+      },
+      {
+        phase: "Phase 1: Search",
+        title: "Outer loop: levelIndex = 0",
+        explain: "Only level 0 exists. Look at HEAD.forward[0] → baz(20).",
+        highlights: [4], hlClass: "hl-search",
+        listLevel: 1, newLevel: "—", levelIndex: 0, current: "HEAD", next: "baz(20)", length: 2,
+        update: {}, diagram: "search0-start", activeLevel: 0, currentNode: "HEAD", nextNode: "baz", comparing: true,
+      },
+      {
+        phase: "Phase 1: Search",
+        title: "Inner loop: move to baz",
+        explain: "baz(20) < caz(30.1)? YES → current = baz.",
+        highlights: [5, 6, 7], hlClass: "hl-inner",
+        listLevel: 1, newLevel: "—", levelIndex: 0, current: "baz", next: "baz(20)", length: 2,
+        update: {}, diagram: "search0-moved", activeLevel: 0, currentNode: "baz", nextNode: "baz", comparing: true,
+      },
+      {
+        phase: "Phase 1: Search",
+        title: "Inner loop: stop at paz",
+        explain: "baz.forward[0] → paz(40). paz(40) < caz(30.1)? NO → inner loop stops.",
+        highlights: [5, 6], hlClass: "hl-inner",
+        listLevel: 1, newLevel: "—", levelIndex: 0, current: "baz", next: "paz(40)", length: 2,
+        update: {}, diagram: "search0-stop", activeLevel: 0, currentNode: "baz", nextNode: "paz", comparing: true,
+      },
+      {
+        phase: "Phase 1: Search",
+        title: "Save update[0] = baz",
+        explain: "Bookmark: at level 0, insert after baz.",
+        highlights: [9], hlClass: "hl-save",
+        listLevel: 1, newLevel: "—", levelIndex: 0, current: "baz", next: "gap after baz", length: 2,
+        update: { 0: "baz" }, savedLevel: 0, diagram: "search-done", activeLevel: 0, currentNode: "baz", nextNode: "GAP", showGap: true,
+      },
+      {
+        phase: "Phase 2: Create node",
+        title: "Roll newLevel = 2",
+        explain: "randomLevel() returns 2 (demo fixed). Node will exist on levels 0 and 1.",
+        highlights: [12], hlClass: "hl-create",
+        listLevel: 1, newLevel: 2, levelIndex: "—", current: "—", next: "roll dice → 2", length: 2,
+        update: { 0: "baz" }, diagram: "search-done", showGap: true, showNewNode: true, newNodeFloating: true,
+      },
+      {
+        phase: "Phase 2: Create node",
+        title: "Create node caz(30.1)",
+        explain: "node.forward = make([]*SkipListNode, 2) → two nil pointers for levels 0 and 1.",
+        highlights: [13, 14, 15], hlClass: "hl-create",
+        listLevel: 1, newLevel: 2, levelIndex: "—", current: "—", next: "node.forward = [nil, nil]", length: 2,
+        update: { 0: "baz" }, diagram: "search-done", showGap: true, showNewNode: true, newNodeFloating: true,
+      },
+      {
+        phase: "Phase 3: Grow list height",
+        title: "newLevel (2) > skipList.level (1)",
+        explain: "Level 1 did not exist before. Search never filled update[1].",
+        highlights: [17], hlClass: "hl-grow",
+        listLevel: 1, newLevel: 2, levelIndex: "—", current: "—", next: "need update[1]", length: 2,
+        update: { 0: "baz" }, diagram: "grow-check", showGap: true, showNewNode: true, newNodeFloating: true,
+      },
+      {
+        phase: "Phase 3: Grow list height",
+        title: "update[1] = HEAD",
+        explain: "Brand-new upper level: predecessor is HEAD.",
+        highlights: [18, 19], hlClass: "hl-grow",
+        listLevel: 1, newLevel: 2, levelIndex: 1, current: "—", next: "update[1] = HEAD", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, savedLevel: 1, diagram: "grow-fill", showGap: true, showNewNode: true, newNodeFloating: true,
+      },
+      {
+        phase: "Phase 3: Grow list height",
+        title: "skipList.level = 2",
+        explain: "List is now 2 levels tall because this node rolled height 2.",
+        highlights: [20], hlClass: "hl-grow",
+        listLevel: 2, newLevel: 2, levelIndex: "—", current: "—", next: "skipList.level = 2", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "grow-done", showGap: true, showNewNode: true, newNodeFloating: true,
+      },
+      {
+        phase: "Phase 4: Splice",
+        title: "Splice level 0 — step 1",
+        explain: "node.forward[0] = update[0].forward[0]  →  node.forward[0] = paz",
+        highlights: [23, 24], hlClass: "hl-splice",
+        listLevel: 2, newLevel: 2, levelIndex: 0, current: "—", next: "caz.forward[0] = paz", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "splice0-a", showNewNode: true, spliceLevel: 0, spliceStep: 1,
+      },
+      {
+        phase: "Phase 4: Splice",
+        title: "Splice level 0 — step 2",
+        explain: "update[0].forward[0] = node  →  baz.forward[0] = caz",
+        highlights: [24], hlClass: "hl-splice",
+        listLevel: 2, newLevel: 2, levelIndex: 0, current: "—", next: "baz.forward[0] = caz", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "splice0-b", showNewNode: true, spliceLevel: 0, spliceStep: 2,
+      },
+      {
+        phase: "Phase 4: Splice",
+        title: "Splice level 1 — step 1",
+        explain: "Level 1 was empty (HEAD → nil). node.forward[1] = nil.",
+        highlights: [23, 24], hlClass: "hl-splice",
+        listLevel: 2, newLevel: 2, levelIndex: 1, current: "—", next: "caz.forward[1] = nil", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "splice1-a", showNewNode: true, spliceLevel: 1, spliceStep: 1,
+      },
+      {
+        phase: "Phase 4: Splice",
+        title: "Splice level 1 — step 2",
+        explain: "HEAD.forward[1] = caz. Express lane now skips baz.",
+        highlights: [24], hlClass: "hl-splice",
+        listLevel: 2, newLevel: 2, levelIndex: 1, current: "—", next: "HEAD.forward[1] = caz", length: 2,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "splice1-b", showNewNode: true, spliceLevel: 1, spliceStep: 2,
+      },
+      {
+        phase: "Phase 5: Done",
+        title: "skipList.length++",
+        explain: "Length goes from 2 to 3. Final order on level 0: baz → caz → paz.",
+        highlights: [27], hlClass: "hl-done",
+        listLevel: 2, newLevel: 2, levelIndex: "done", current: "—", next: "length = 3", length: 3,
+        update: { 0: "baz", 1: "HEAD" }, diagram: "final",
+      },
+    ];
+
+    let stepIndex = 0;
+    const els = {
+      phaseBadge: document.getElementById("phaseBadge"),
+      stepCounter: document.getElementById("stepCounter"),
+      stepTitle: document.getElementById("stepTitle"),
+      stepExplain: document.getElementById("stepExplain"),
+      codeBlock: document.getElementById("codeBlock"),
+      stateListLevel: document.getElementById("stateListLevel"),
+      stateNewLevel: document.getElementById("stateNewLevel"),
+      stateLevel: document.getElementById("stateLevel"),
+      stateCurrent: document.getElementById("stateCurrent"),
+      stateNext: document.getElementById("stateNext"),
+      stateLength: document.getElementById("stateLength"),
+      updateList: document.getElementById("updateList"),
+      diagram: document.getElementById("diagram"),
+      prevBtn: document.getElementById("prevBtn"),
+      nextBtn: document.getElementById("nextBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+    };
+
+    function renderCode(step) {
+      els.codeBlock.innerHTML = codeLines.map((line, index) => {
+        const safe = line.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        if (!step.highlights.includes(index)) return safe;
+        return `<span class="${step.hlClass}">${safe}</span>`;
+      }).join("\n");
+    }
+
+    function renderUpdate(update, savedLevel) {
+      const parts = [];
+      for (const level of [1, 0]) {
+        const value = update[level] ? `update[${level}] = ${update[level]}` : `update[${level}] = —`;
+        const marker = savedLevel === level ? "  ← just saved" : "";
+        parts.push(value + marker);
+      }
+      els.updateList.innerHTML = "<strong>update[]</strong><br>" + parts.join("<br>");
+    }
+
+    function nodeX(name) {
+      return ({ HEAD: 40, baz: 180, caz: 320, paz: 460, GAP: 320 }[name] ?? 40);
+    }
+
+    function getLevelData(step) {
+      const mode = step.diagram;
+      const hasCaz = ["splice0-b", "splice1-a", "splice1-b", "final"].includes(mode);
+      const showLevel1 = ["grow-done", "splice0-a", "splice0-b", "splice1-a", "splice1-b", "final"].includes(mode);
+      const level1Edges = mode === "final" || mode === "splice1-b"
+        ? [["HEAD", "caz"], ["caz", "paz"]]
+        : mode === "splice1-a"
+          ? [["HEAD", "caz"]]
+          : [];
+      const level0Edges = hasCaz
+        ? [["HEAD", "baz"], ["baz", "caz"], ["caz", "paz"]]
+        : [["HEAD", "baz"], ["baz", "paz"]];
+      const level0Nodes = hasCaz ? ["HEAD", "baz", "caz", "paz"] : ["HEAD", "baz", "paz"];
+      const level1Nodes = showLevel1
+        ? (mode === "final" || mode === "splice1-b" ? ["HEAD", "caz", "paz"] : ["HEAD", "caz"])
+        : ["HEAD"];
+
+      return {
+        levels: [
+          { y: 62, label: "Level 1 (express)", nodes: level1Nodes, edges: level1Edges, idx: 1 },
+          { y: 190, label: "Level 0 (full list)", nodes: level0Nodes, edges: level0Edges, idx: 0 },
+        ],
+      };
+    }
+
+    function drawDiagram(step) {
+      const svg = els.diagram;
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      const add = (name, attrs, parent = svg) => {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+        parent.appendChild(el);
+        return el;
+      };
+
+      const defs = add("defs", {});
+      const marker = add("marker", { id: "arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" }, defs);
+      add("path", { d: "M0,0 L8,4 L0,8 Z", fill: "var(--line)" }, marker);
+
+      const { levels } = getLevelData(step);
+
+      levels.forEach((level) => {
+        add("text", { x: 10, y: level.y - 28, fill: "var(--muted)", "font-size": 13 }).textContent = level.label;
+
+        level.edges.forEach(([from, to]) => {
+          const active = step.activeLevel === level.idx;
+          const isSplice = step.spliceLevel === level.idx;
+          const highlight = (step.comparing && step.currentNode === from && step.nextNode === to && active)
+            || (isSplice && step.spliceStep === 2 && step.update[level.idx] === from)
+            || (isSplice && step.spliceStep === 1 && to === "caz");
+          add("line", {
+            x1: nodeX(from) + 36, y1: level.y, x2: nodeX(to) - 8, y2: level.y,
+            stroke: highlight ? "var(--next)" : "var(--line)",
+            "stroke-width": highlight ? 3 : 2,
+            "marker-end": "url(#arrow)",
+          });
+        });
+
+        level.nodes.forEach((nodeName) => {
+          const x = nodeX(nodeName);
+          const y = level.y;
+          const isCurrent = step.currentNode === nodeName;
+          const isSaved = Object.values(step.update || {}).includes(nodeName);
+          const isNew = nodeName === "caz";
+          add("rect", {
+            x: x - 8, y: y - 18, width: 72, height: 36, rx: 8,
+            fill: isNew ? "var(--new)" : (isCurrent ? "var(--current)" : (isSaved ? "var(--update)" : "var(--panel)")),
+            stroke: isNew ? "var(--accent)" : "var(--line)", "stroke-width": 2,
+          });
+          add("text", {
+            x: x + 28, y: y + 5, "text-anchor": "middle",
+            fill: isNew || isCurrent ? "#111" : "var(--text)", "font-size": 13, "font-weight": 600,
+          }).textContent = nodeName.toUpperCase() === "HEAD" ? "HEAD" : nodeName;
+          const score = nodeName === "baz" ? "20" : nodeName === "caz" ? "30.1" : nodeName === "paz" ? "40" : "";
+          add("text", {
+            x: x + 28, y: y + 22, "text-anchor": "middle", fill: "#333", "font-size": 11,
+          }).textContent = score;
+        });
+      });
+
+      if (step.showGap && !step.showNewNode) {
+        add("rect", {
+          x: nodeX("GAP") - 8, y: 190 - 18, width: 72, height: 36, rx: 8,
+          fill: "rgba(91,188,255,0.2)", stroke: "var(--accent)", "stroke-width": 2, "stroke-dasharray": "5 4",
+        });
+        add("text", { x: nodeX("GAP") + 28, y: 196, "text-anchor": "middle", fill: "var(--accent)", "font-size": 13, "font-weight": 700 }).textContent = "?";
+        add("text", { x: nodeX("GAP") + 28, y: 213, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11 }).textContent = "insert here";
+      }
+
+      if (step.newNodeFloating) {
+        add("rect", {
+          x: 620, y: 110, width: 88, height: 44, rx: 8,
+          fill: "var(--new)", stroke: "var(--accent)", "stroke-width": 2, "stroke-dasharray": "4 3",
+        });
+        add("text", { x: 664, y: 132, "text-anchor": "middle", fill: "#111", "font-size": 13, "font-weight": 700 }).textContent = "caz";
+        add("text", { x: 664, y: 148, "text-anchor": "middle", fill: "#333", "font-size": 11 }).textContent = "30.1 / newLevel=2";
+      }
+    }
+
+    function render() {
+      const step = steps[stepIndex];
+      els.phaseBadge.textContent = step.phase;
+      els.stepCounter.textContent = `Step ${stepIndex + 1} / ${steps.length}`;
+      els.stepTitle.textContent = step.title;
+      els.stepExplain.textContent = step.explain;
+      els.stateListLevel.textContent = step.listLevel;
+      els.stateNewLevel.textContent = step.newLevel;
+      els.stateLevel.textContent = step.levelIndex;
+      els.stateCurrent.textContent = step.current;
+      els.stateNext.textContent = step.next;
+      els.stateLength.textContent = step.length;
+      renderCode(step);
+      renderUpdate(step.update || {}, step.savedLevel);
+      drawDiagram(step);
+      els.prevBtn.disabled = stepIndex === 0;
+      els.nextBtn.disabled = stepIndex === steps.length - 1;
+    }
+
+    els.prevBtn.addEventListener("click", () => { if (stepIndex > 0) { stepIndex -= 1; render(); } });
+    els.nextBtn.addEventListener("click", () => { if (stepIndex < steps.length - 1) { stepIndex += 1; render(); } });
+    els.resetBtn.addEventListener("click", () => { stepIndex = 0; render(); });
+    render();
+  </script>
+</body>
+</html>

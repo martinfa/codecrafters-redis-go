@@ -6,20 +6,24 @@ type SortedSetMember struct {
 }
 
 type SortedSet struct {
-	memberScores   map[string]float64
-	orderedMembers []SortedSetMember
+	memberScores map[string]float64
+	orderedIndex *SkipList
 }
 
 func newSortedSet() *SortedSet {
 	return &SortedSet{
-		memberScores:   make(map[string]float64),
-		orderedMembers: []SortedSetMember{},
+		memberScores: make(map[string]float64),
+		orderedIndex: NewSkipList(),
 	}
 }
 
 func (sortedSet *SortedSet) GetMemberScore(member string) (float64, bool) {
 	score, exists := sortedSet.memberScores[member]
 	return score, exists
+}
+
+func (sortedSet *SortedSet) GetMemberRank(member string) (int, bool) {
+	return sortedSet.orderedIndex.GetRank(member)
 }
 
 func (sortedSet *SortedSet) MemberCount() int {
@@ -55,10 +59,7 @@ func (cache *Cache) Zadd(key string, score float64, member string) int {
 	}
 
 	sortedSet.memberScores[member] = score
-	sortedSet.orderedMembers = insertSortedSetMember(sortedSet.orderedMembers, SortedSetMember{
-		Member: member,
-		Score:  score,
-	})
+	sortedSet.orderedIndex.Insert(score, member)
 
 	cache.cache[key] = CacheItem{
 		Value:      sortedSet,
@@ -68,18 +69,11 @@ func (cache *Cache) Zadd(key string, score float64, member string) int {
 	return 1
 }
 
-func insertSortedSetMember(orderedMembers []SortedSetMember, newMember SortedSetMember) []SortedSetMember {
-	insertIndex := len(orderedMembers)
-	for index, existingMember := range orderedMembers {
-		if newMember.Score < existingMember.Score {
-			insertIndex = index
-			break
-		}
+func (cache *Cache) Zrank(key string, member string) (int, bool) {
+	sortedSet := cache.GetSortedSet(key)
+	if sortedSet == nil {
+		return 0, false
 	}
 
-	orderedMembers = append(orderedMembers, SortedSetMember{})
-	copy(orderedMembers[insertIndex+1:], orderedMembers[insertIndex:])
-	orderedMembers[insertIndex] = newMember
-
-	return orderedMembers
+	return sortedSet.GetMemberRank(member)
 }
