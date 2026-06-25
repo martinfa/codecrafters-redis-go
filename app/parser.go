@@ -45,6 +45,7 @@ const (
 	CmdZADD
 	CmdZRANK
 	CmdZRANGE
+	CmdZCARD
 )
 
 // IsWrite returns true if the command is a write command
@@ -128,6 +129,8 @@ func (c CommandType) String() string {
 		return "ZRANK"
 	case CmdZRANGE:
 		return "ZRANGE"
+	case CmdZCARD:
+		return "ZCARD"
 	default:
 		return "UNKNOWN"
 	}
@@ -190,6 +193,8 @@ func ParseCommandType(name string) CommandType {
 		return CmdZRANK
 	case "ZRANGE":
 		return CmdZRANGE
+	case "ZCARD":
+		return CmdZCARD
 	case "REPLCONF":
 		return CmdREPLCONF
 	case "PSYNC":

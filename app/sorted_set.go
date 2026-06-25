@@ -86,6 +86,15 @@ func (cache *Cache) Zrange(key string, startIndex int, stopIndex int) []string {
 	return sortedSet.GetMembersInRankRange(startIndex, stopIndex)
 }
 
+func (cache *Cache) Zcard(key string) int {
+	sortedSet := cache.GetSortedSet(key)
+	if sortedSet == nil {
+		return 0
+	}
+
+	return sortedSet.MemberCount()
+}
+
 func (cache *Cache) Zrank(key string, member string) (int, bool) {
 	sortedSet := cache.GetSortedSet(key)
 	if sortedSet == nil {
