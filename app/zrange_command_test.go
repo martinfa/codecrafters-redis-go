@@ -182,6 +182,88 @@ func TestHandleZrangeStopIndexGreaterThanCardinalityClampsToLastElement(t *testi
 	}
 }
 
+func seedRacerScoresExample(t *testing.T) {
+	t.Helper()
+	resetSortedSetTestState(t)
+
+	addSortedSetMembers(t, "racer_scores",
+		SortedSetMember{Member: "Sam-Bodden", Score: 8.5},
+		SortedSetMember{Member: "Royce", Score: 10.2},
+		SortedSetMember{Member: "Ford", Score: 6.1},
+		SortedSetMember{Member: "Prickett", Score: 14.9},
+		SortedSetMember{Member: "Ben", Score: 10.2},
+	)
+}
+
+func TestHandleZrangeCodecraftersNegativeIndexStageExample(t *testing.T) {
+	seedCodecraftersZsetExample(t)
+
+	result := HandleZrange(&RedisCommand{
+		Type: CmdZRANGE,
+		Args: []string{"zset_key", "2", "-1"},
+	})
+
+	expected := formatExpectedZrangeResponse("paz", "bar", "foo")
+	if result != expected {
+		t.Errorf("HandleZrange() = %q, expected %q", result, expected)
+	}
+}
+
+func TestHandleZrangeNegativeIndexes(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(t *testing.T)
+		args     []string
+		expected string
+	}{
+		{
+			name:     "returns last two elements for indexes -2 and -1",
+			setup:    seedRacerScoresExample,
+			args:     []string{"racer_scores", "-2", "-1"},
+			expected: formatExpectedZrangeResponse("Royce", "Prickett"),
+		},
+		{
+			name:     "returns all items except last two for indexes 0 and -3",
+			setup:    seedRacerScoresExample,
+			args:     []string{"racer_scores", "0", "-3"},
+			expected: formatExpectedZrangeResponse("Ford", "Sam-Bodden", "Ben"),
+		},
+		{
+			name:     "returns single last element for indexes -1 and -1",
+			setup:    seedRacerScoresExample,
+			args:     []string{"racer_scores", "-1", "-1"},
+			expected: formatExpectedZrangeResponse("Prickett"),
+		},
+		{
+			name:     "treats out of range negative start index as zero",
+			setup:    seedRacerScoresExample,
+			args:     []string{"racer_scores", "-6", "2"},
+			expected: formatExpectedZrangeResponse("Ford", "Sam-Bodden", "Ben"),
+		},
+		{
+			name:     "returns empty array when normalized start is greater than stop",
+			setup:    seedRacerScoresExample,
+			args:     []string{"racer_scores", "-1", "-3"},
+			expected: "*0\r\n",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.setup(t)
+
+			result := HandleZrange(&RedisCommand{
+				Type: CmdZRANGE,
+				Args: testCase.args,
+			})
+
+			if result != testCase.expected {
+				t.Errorf("HandleZrange() = %q, expected %q", result, testCase.expected)
+			}
+		})
+	}
+}
+
 func TestHandleZrangeArgumentParsing(t *testing.T) {
 	resetSortedSetTestState(t)
 

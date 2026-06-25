@@ -50,10 +50,13 @@ func HandleZrange(command *RedisCommand) string {
 	}
 
 	sortedSetLength := sortedSet.orderedIndex.Length()
+
+	startIndex = normalizeLrangeIndex(startIndex, sortedSetLength)
 	if startIndex >= sortedSetLength {
 		return "*0\r\n"
 	}
 
+	stopIndex = normalizeLrangeIndex(stopIndex, sortedSetLength)
 	if stopIndex >= sortedSetLength {
 		stopIndex = sortedSetLength - 1
 	}
