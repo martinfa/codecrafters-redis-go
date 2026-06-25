@@ -49,19 +49,22 @@ func TestSkipListInsertOrdersByIncreasingScore(t *testing.T) {
 		SortedSetMember{Member: "caz", Score: 30.1},
 	)
 
-	expectedRanks := map[string]int{
-		"baz": 0,
-		"caz": 1,
-		"paz": 2,
+	expectedRanks := map[string]struct {
+		score float64
+		rank  int
+	}{
+		"baz": {score: 20.0, rank: 0},
+		"caz": {score: 30.1, rank: 1},
+		"paz": {score: 40.2, rank: 2},
 	}
 
-	for member, expectedRank := range expectedRanks {
-		rank, found := skipList.GetRank(member)
+	for member, expected := range expectedRanks {
+		rank, found := skipList.GetRank(expected.score, member)
 		if !found {
 			t.Fatalf("GetRank(%q) member not found", member)
 		}
-		if rank != expectedRank {
-			t.Errorf("GetRank(%q) = %d, expected %d", member, rank, expectedRank)
+		if rank != expected.rank {
+			t.Errorf("GetRank(%q) = %d, expected %d", member, rank, expected.rank)
 		}
 	}
 }
@@ -76,16 +79,17 @@ func TestSkipListInsertBreaksTiesLexicographically(t *testing.T) {
 	)
 
 	tests := []struct {
-		member        string
-		expectedRank  int
+		member       string
+		score        float64
+		expectedRank int
 	}{
-		{member: "member_with_score_1", expectedRank: 0},
-		{member: "another_member_with_score_2", expectedRank: 1},
-		{member: "member_with_score_2", expectedRank: 2},
+		{member: "member_with_score_1", score: 1.0, expectedRank: 0},
+		{member: "another_member_with_score_2", score: 2.0, expectedRank: 1},
+		{member: "member_with_score_2", score: 2.0, expectedRank: 2},
 	}
 
 	for _, testCase := range tests {
-		rank, found := skipList.GetRank(testCase.member)
+		rank, found := skipList.GetRank(testCase.score, testCase.member)
 		if !found {
 			t.Fatalf("GetRank(%q) member not found", testCase.member)
 		}
@@ -108,17 +112,18 @@ func TestSkipListGetRankCodecraftersStageExample(t *testing.T) {
 
 	tests := []struct {
 		member       string
+		score        float64
 		expectedRank int
 	}{
-		{member: "baz", expectedRank: 0},
-		{member: "caz", expectedRank: 1},
-		{member: "paz", expectedRank: 2},
-		{member: "bar", expectedRank: 3},
-		{member: "foo", expectedRank: 4},
+		{member: "baz", score: 20.0, expectedRank: 0},
+		{member: "caz", score: 30.1, expectedRank: 1},
+		{member: "paz", score: 40.2, expectedRank: 2},
+		{member: "bar", score: 100.0, expectedRank: 3},
+		{member: "foo", score: 100.0, expectedRank: 4},
 	}
 
 	for _, testCase := range tests {
-		rank, found := skipList.GetRank(testCase.member)
+		rank, found := skipList.GetRank(testCase.score, testCase.member)
 		if !found {
 			t.Fatalf("GetRank(%q) member not found", testCase.member)
 		}
@@ -132,7 +137,7 @@ func TestSkipListGetRankMissingMemberReturnsNotFound(t *testing.T) {
 	skipList := newTestSkipList()
 	insertSkipListMembers(skipList, SortedSetMember{Member: "foo", Score: 1.0})
 
-	_, found := skipList.GetRank("missing_member")
+	_, found := skipList.GetRank(0.0, "missing_member")
 	if found {
 		t.Fatal("GetRank(missing_member) found = true, expected false")
 	}

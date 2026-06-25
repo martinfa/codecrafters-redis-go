@@ -210,6 +210,8 @@ func executeConnectionCommand(connection net.Conn, command *RedisCommand) string
 		return HandleZadd(command)
 	case CmdZRANK:
 		return HandleZrank(command)
+	case CmdZRANGE:
+		return HandleZrange(command)
 	case CmdMULTI:
 		return HandleMulti(connection, command)
 	case CmdEXEC:

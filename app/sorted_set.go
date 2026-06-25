@@ -23,7 +23,11 @@ func (sortedSet *SortedSet) GetMemberScore(member string) (float64, bool) {
 }
 
 func (sortedSet *SortedSet) GetMemberRank(member string) (int, bool) {
-	return sortedSet.orderedIndex.GetRank(member)
+	score, exists := sortedSet.memberScores[member]
+	if !exists {
+		return 0, false
+	}
+	return sortedSet.orderedIndex.GetRank(score, member)
 }
 
 func (sortedSet *SortedSet) MemberCount() int {
@@ -67,6 +71,19 @@ func (cache *Cache) Zadd(key string, score float64, member string) int {
 	}
 
 	return 1
+}
+
+func (sortedSet *SortedSet) GetMembersInRankRange(startIndex int, stopIndex int) []string {
+	return sortedSet.orderedIndex.RangeByRank(startIndex, stopIndex)
+}
+
+func (cache *Cache) Zrange(key string, startIndex int, stopIndex int) []string {
+	sortedSet := cache.GetSortedSet(key)
+	if sortedSet == nil {
+		return nil
+	}
+
+	return sortedSet.GetMembersInRankRange(startIndex, stopIndex)
 }
 
 func (cache *Cache) Zrank(key string, member string) (int, bool) {

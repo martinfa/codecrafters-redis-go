@@ -5,30 +5,59 @@ import "math/rand/v2"
 const (
 	skipListMaxLevel    = 32
 	skipListProbability = 0.25
+	groundLevel         = 0 // level 0 = the full sorted chain of all members
 )
 
 type SkipListNode struct {
 	member  string
 	score   float64
 	forward []*SkipListNode
+	span    []int // spanToNextAtLevel[i] = ground-chain members skipped by forward[i]
 }
 
 type SkipList struct {
 	head   *SkipListNode
 	level  int
 	length int
+
+	// testLevelOverride forces randomLevel() to return this value (tests only).
+	testLevelOverride int
 }
 
 func NewSkipList() *SkipList {
 	return &SkipList{
 		head: &SkipListNode{
 			forward: make([]*SkipListNode, skipListMaxLevel),
+			span:    make([]int, skipListMaxLevel),
 		},
 		level: 1,
 	}
 }
 
+func (node *SkipListNode) nextAtLevel(level int) *SkipListNode {
+	return node.forward[level]
+}
+
+func (node *SkipListNode) setNextAtLevel(level int, next *SkipListNode) {
+	node.forward[level] = next
+}
+
+func (node *SkipListNode) spanToNextAtLevel(level int) int {
+	return node.span[level]
+}
+
+func (node *SkipListNode) setSpanToNextAtLevel(level int, span int) {
+	node.span[level] = span
+}
+
+func (node *SkipListNode) nextOnGroundChain() *SkipListNode {
+	return node.forward[groundLevel]
+}
+
 func (skipList *SkipList) randomLevel() int {
+	if skipList.testLevelOverride > 0 {
+		return skipList.testLevelOverride
+	}
 	level := 1
 	for level < skipListMaxLevel && rand.Float64() < skipListProbability {
 		level++
@@ -37,52 +66,161 @@ func (skipList *SkipList) randomLevel() int {
 }
 
 func (skipList *SkipList) Insert(score float64, member string) {
-	predecessors := make([]*SkipListNode, skipListMaxLevel)
+	nodeBeforeInsertAtLevel := make([]*SkipListNode, skipListMaxLevel)
+	sortedPositionAtLevel := make([]int, skipListMaxLevel)
 	current := skipList.head
+	topLevel := skipList.level - 1
 
-	for levelIndex := skipList.level - 1; levelIndex >= 0; levelIndex-- {
-		for current.forward[levelIndex] != nil &&
-			compareSkipListMembers(current.forward[levelIndex].score, current.forward[levelIndex].member, score, member) < 0 {
-			current = current.forward[levelIndex]
+	for searchLevel := topLevel; searchLevel >= groundLevel; searchLevel-- {
+		if searchLevel == topLevel {
+			sortedPositionAtLevel[searchLevel] = 0
+		} else {
+			sortedPositionAtLevel[searchLevel] = sortedPositionAtLevel[searchLevel+1]
 		}
-		predecessors[levelIndex] = current
+
+		for {
+			nextNode := current.nextAtLevel(searchLevel)
+			if nextNode == nil {
+				break
+			}
+			nextSortsBeforeInsert := compareSkipListMembers(nextNode.score, nextNode.member, score, member) < 0
+			if !nextSortsBeforeInsert {
+				break
+			}
+
+			groundChainMembersSkipped := current.spanToNextAtLevel(searchLevel)
+			sortedPositionAtLevel[searchLevel] += groundChainMembersSkipped
+			current = nextNode
+		}
+
+		nodeBeforeInsertAtLevel[searchLevel] = current
 	}
 
-	newLevel := skipList.randomLevel()
-	node := &SkipListNode{
+	newNodeLevel := skipList.randomLevel()
+	newNode := &SkipListNode{
 		member:  member,
 		score:   score,
-		forward: make([]*SkipListNode, newLevel),
+		forward: make([]*SkipListNode, newNodeLevel),
+		span:    make([]int, newNodeLevel),
 	}
 
-	if newLevel > skipList.level {
-		for levelIndex := skipList.level; levelIndex < newLevel; levelIndex++ {
-			predecessors[levelIndex] = skipList.head
+	if newNodeLevel > skipList.level {
+		for searchLevel := skipList.level; searchLevel < newNodeLevel; searchLevel++ {
+			nodeBeforeInsertAtLevel[searchLevel] = skipList.head
+			sortedPositionAtLevel[searchLevel] = 0
+			skipList.head.setSpanToNextAtLevel(searchLevel, skipList.length)
 		}
-		skipList.level = newLevel
+		skipList.level = newNodeLevel
 	}
 
-	for levelIndex := 0; levelIndex < newLevel; levelIndex++ {
-		node.forward[levelIndex] = predecessors[levelIndex].forward[levelIndex]
-		predecessors[levelIndex].forward[levelIndex] = node
+	insertSortedPosition := sortedPositionAtLevel[groundLevel]
+
+	for spliceLevel := groundLevel; spliceLevel < newNodeLevel; spliceLevel++ {
+		nodeBeforeInsert := nodeBeforeInsertAtLevel[spliceLevel]
+		oldNext := nodeBeforeInsert.nextAtLevel(spliceLevel)
+
+		newNode.setNextAtLevel(spliceLevel, oldNext)
+		nodeBeforeInsert.setNextAtLevel(spliceLevel, newNode)
+
+		sortedPositionAtBookmark := sortedPositionAtLevel[spliceLevel]
+		distanceFromBookmarkToInsert := insertSortedPosition - sortedPositionAtBookmark
+		oldSpanFromBookmarkToOldNext := nodeBeforeInsert.spanToNextAtLevel(spliceLevel)
+
+		spanFromBookmarkToNewNode := distanceFromBookmarkToInsert + 1
+		spanFromNewNodeToOldNext := oldSpanFromBookmarkToOldNext - distanceFromBookmarkToInsert
+
+		nodeBeforeInsert.setSpanToNextAtLevel(spliceLevel, spanFromBookmarkToNewNode)
+		newNode.setSpanToNextAtLevel(spliceLevel, spanFromNewNodeToOldNext)
+	}
+
+	for untouchedLevel := newNodeLevel; untouchedLevel < skipList.level; untouchedLevel++ {
+		nodeBeforeInsert := nodeBeforeInsertAtLevel[untouchedLevel]
+		spanBeforeInsert := nodeBeforeInsert.spanToNextAtLevel(untouchedLevel)
+		nodeBeforeInsert.setSpanToNextAtLevel(untouchedLevel, spanBeforeInsert+1)
 	}
 
 	skipList.length++
 }
 
-func (skipList *SkipList) GetRank(member string) (rank int, found bool) {
-	rank = 0
-	current := skipList.head.forward[0]
+func (skipList *SkipList) GetRank(score float64, member string) (memberRank int, found bool) {
+	memberRank = 0
+	current := skipList.head
+	topLevel := skipList.level - 1
 
-	for current != nil {
-		if current.member == member {
-			return rank, true
+	for searchLevel := topLevel; searchLevel >= groundLevel; searchLevel-- {
+		for {
+			nextNode := current.nextAtLevel(searchLevel)
+			if nextNode == nil {
+				break
+			}
+			nextSortsBeforeTarget := compareSkipListMembers(nextNode.score, nextNode.member, score, member) < 0
+			if !nextSortsBeforeTarget {
+				break
+			}
+
+			groundChainMembersSkipped := current.spanToNextAtLevel(searchLevel)
+			memberRank += groundChainMembersSkipped
+			current = nextNode
 		}
-		rank++
-		current = current.forward[0]
+	}
+
+	targetNode := current.nextOnGroundChain()
+	targetFound := targetNode != nil && targetNode.member == member && targetNode.score == score
+	if targetFound {
+		return memberRank, true
 	}
 
 	return 0, false
+}
+
+func (skipList *SkipList) getNodeByRank(memberRank int) *SkipListNode {
+	targetSortedPosition := memberRank + 1 // span math uses 1-based distance from head
+	traversedGroundChainMembers := 0
+	current := skipList.head
+	topLevel := skipList.level - 1
+
+	for searchLevel := topLevel; searchLevel >= groundLevel; searchLevel-- {
+		for {
+			nextNode := current.nextAtLevel(searchLevel)
+			if nextNode == nil {
+				break
+			}
+
+			spanToNext := current.spanToNextAtLevel(searchLevel)
+			wouldOvershoot := traversedGroundChainMembers+spanToNext > targetSortedPosition
+			if wouldOvershoot {
+				break
+			}
+
+			traversedGroundChainMembers += spanToNext
+			current = nextNode
+		}
+
+		if traversedGroundChainMembers == targetSortedPosition {
+			return current
+		}
+	}
+
+	return nil
+}
+
+func (skipList *SkipList) RangeByRank(startIndex int, stopIndex int) []string {
+	if startIndex < 0 || startIndex >= skipList.length || startIndex > stopIndex {
+		return []string{}
+	}
+	if stopIndex >= skipList.length {
+		stopIndex = skipList.length - 1
+	}
+
+	members := make([]string, 0, stopIndex-startIndex+1)
+	current := skipList.getNodeByRank(startIndex)
+
+	for memberRank := startIndex; memberRank <= stopIndex && current != nil; memberRank++ {
+		members = append(members, current.member)
+		current = current.nextOnGroundChain()
+	}
+
+	return members
 }
 
 func (skipList *SkipList) Length() int {
